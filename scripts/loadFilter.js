@@ -234,9 +234,9 @@ jQuery(function ($) {
 				if (item == module_css_filter) {
 					mainClass = "." + item;
 				}
-			} else if (item.match(/decm_event_display_/g)) {
+			} else if (item.match(/decm_event_display_/g) || item.match(/event-display_\d+/g)) {
 				mainClass = "." + item;
-				("Found mainClass by decm_event_display_:", mainClass);
+				("Found mainClass by event display order class:", mainClass);
 			}
 		});
 	});
@@ -530,25 +530,8 @@ jQuery(function ($) {
 	}
 
 
-	// Keep filter dropdowns above Events Feed (header + body layouts use separate stacking contexts).
-	function decmSetupFilterStacking() {
-		var sectionSelector = '.et-l--header, #main-header, header.et-l, header, .et_pb_section';
-
-		$('.decm_event_filter_parent').each(function () {
-			var $filter = $(this);
-			$filter.css({ position: 'relative', zIndex: 100 });
-
-			var $section = $filter.closest(sectionSelector).first();
-			if ($section.length) {
-				$section.css({ position: 'relative', zIndex: 100 });
-			}
-		});
-
-		// Within the same section, keep the feed module below open filter dropdowns.
-		$('.decm_event_display').closest('.et_pb_module').css({ position: 'relative', zIndex: 1 });
-	}
-
-	decmSetupFilterStacking();
+	// Stacking is handled in CSS (event-filter-parent/module.scss). Do not manipulate z-index here —
+	// inline JS changes broke filter selection after the dropdown stacking fix.
 
 	jQuery('input[name=\'dec_filter_organizer\'], .dec-organizer-list').on("click", function () {
 
@@ -1116,6 +1099,11 @@ jQuery(function ($) {
 		$('.dec-event-category-filter-list').toggle();
 	});
 
+	// Keep selection clicks inside dropdown panels from bubbling to bar toggles / stacking handlers.
+	$('.dec-event-category-filter-list, .dec-organizer-filter-list, .dec-venue-filter-list, .dec-tag-filter-list, .dec-month-filter-list, .dec-day-filter-list, .dec-time-filter-list, .dec-year-filter-list, .dec-city-filter-list, .dec-country-filter-list, .dec-state-filter-list, .dec-location-filter-list, .dec-order-filter-list, .dec-recurring-filter-list, .dec-status-filter-list, .dec-future-past-filter-list, .dec-price-filter-list').on('click', function (e) {
+		e.stopPropagation();
+	});
+
 
 	$('.dec-filter-month').on("click", function () {
 		$('.dec-month-filter-list').toggle();
@@ -1654,6 +1642,37 @@ jQuery(function ($) {
 
 	}
 
+	/**
+	 * Resolve the Events Feed root from a matched element (module wrapper or inner node).
+	 *
+	 * @param {jQuery} $candidates Candidate element(s).
+	 * @return {jQuery}
+	 */
+	function decmResolveEventDisplayContainer($candidates) {
+		if (!$candidates || !$candidates.length) {
+			return jQuery();
+		}
+
+		var $container = $candidates.filter('.decm_event_display, [class*="event-display_"]').first();
+		if ($container.length) {
+			return $container;
+		}
+
+		$container = $candidates.find('.event_calendar_module__inner').first();
+		if ($container.length) {
+			return $container.closest('.decm_event_display, [class*="event-display_"]').length
+				? $container.closest('.decm_event_display, [class*="event-display_"]').first()
+				: $container;
+		}
+
+		$container = $candidates.find('.events-main__container, .hidden_feild').first().closest('.decm_event_display, [class*="event-display_"], .event_calendar_module__inner');
+		if ($container.length) {
+			return $container.first();
+		}
+
+		return $candidates.first();
+	}
+
 	function decm_get_event(button_here) {
 		// console.log('=== decm_get_event CALLED ===');
 		// console.log('Button here:', button_here);
@@ -1673,17 +1692,9 @@ jQuery(function ($) {
 			if (match) {
 				let connectionId = match[0].replace('+', '\\+'); // Escape '+' for jQuery class selector
 				let connectionIdValue = connectionId.split('\\+')[1] || connectionId.split('+')[1];
-				
-				// Try finding by connection ID in the wrapper or inner container
-				contss = jQuery(`[class*="connectionID+${connectionIdValue}"], [data-connection-id="${connectionIdValue}"]`).find('.event-display, .decm_event_display').first();
-				if (!contss || contss.length === 0) {
-					// Also try finding the wrapper with connectionID class
-					contss = jQuery(`.connectionID\\+${connectionIdValue}`).find('.event-display, .decm_event_display').first();
-				}
-				if (!contss || contss.length === 0) {
-					// Try finding by data-connection-id attribute directly
-					contss = jQuery(`[data-connection-id="${connectionIdValue}"]`).first();
-				}
+				var $connected = jQuery(`[class*="connectionID+${connectionIdValue}"], [data-connection-id="${connectionIdValue}"]`);
+
+				contss = decmResolveEventDisplayContainer($connected);
 				if (contss && contss.length > 0) {
 					connectionIdFound = true;
 					("Found container by connection ID:", contss.length);
@@ -1697,10 +1708,7 @@ jQuery(function ($) {
 			if (filterParent && filterParent.length > 0) {
 				var connectionId = filterParent.attr("data-connection-id") || filterParent.find("[data-connection-id]").first().attr("data-connection-id");
 				if (connectionId) {
-					contss = jQuery(`[data-connection-id="${connectionId}"]`).filter('.event-display, .decm_event_display').first();
-					if (!contss || contss.length === 0) {
-						contss = jQuery(`[data-connection-id="${connectionId}"]`).first();
-					}
+					contss = decmResolveEventDisplayContainer(jQuery(`[data-connection-id="${connectionId}"]`));
 					if (contss && contss.length > 0) {
 						connectionIdFound = true;
 						("Found container by data-connection-id:", contss.length);
@@ -1711,45 +1719,29 @@ jQuery(function ($) {
 
 		// Method 3: FALLBACK - If no connection ID match, try to find by event-display_0 pattern
 		if (!connectionIdFound && (!contss || contss.length === 0)) {
-			// Try to find containers with pattern event-display_0, event-display_1, etc.
-			contss = jQuery('[class*="event-display_"]').first();
-			if (!contss || contss.length === 0) {
-				// Try specific pattern event-display_0
-				contss = jQuery('.event-display_0').first();
-			}
+			contss = decmResolveEventDisplayContainer(jQuery('[class*="event-display_"]'));
 			("Found container by event-display_ pattern:", contss ? contss.length : 0);
 		}
 
-		// Method 4: Try parent/next sibling approach
+		// Method 4: Try parent/next sibling approach (same section layouts only)
 		if (!contss || contss.length === 0) {
 			var filterParent = $(button_here).parents(".decm_event_filter_parent");
 			if (filterParent && filterParent.length > 0) {
-				// Try next sibling
-				contss = filterParent.parent().next("div").find('.event-display, .decm_event_display, [class*="event-display_"]').first();
-				if (!contss || contss.length === 0) {
-					// Try next all siblings
-					contss = filterParent.parent().nextAll("div").find('.event-display, .decm_event_display, [class*="event-display_"]').first();
-				}
-				if (!contss || contss.length === 0) {
-					// Try parent's next sibling
-					contss = filterParent.next("div").find('.event-display, .decm_event_display, [class*="event-display_"]').first();
-				}
+				var $siblingCandidates = filterParent.parent().next("div").add(filterParent.parent().nextAll("div")).add(filterParent.next("div"));
+				contss = decmResolveEventDisplayContainer($siblingCandidates);
 			}
 			("Found container by parent/next:", contss ? contss.length : 0);
 		}
 
 		// Method 5: Try to find any event display container (Divi 5 block class)
 		if (!contss || contss.length === 0) {
-			contss = $(".wp-block-decm-event-display .event-display, .wp-block-decm-event-display .decm_event_display").first();
-			if (!contss || contss.length === 0) {
-				contss = $(".wp-block-decm-event-display").first();
-			}
+			contss = decmResolveEventDisplayContainer($(".wp-block-decm-event-display"));
 			("Found container by Divi 5 block class:", contss ? contss.length : 0);
 		}
 
 		// Method 6: Try to find any event display container
 		if (!contss || contss.length === 0) {
-			contss = $(".event-display, .decm_event_display").first();
+			contss = decmResolveEventDisplayContainer($(".decm_event_display, [class*='event-display_']"));
 			("Found container by first event-display:", contss ? contss.length : 0);
 		}
 

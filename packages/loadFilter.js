@@ -409,8 +409,7 @@ jQuery(function ($) {
 		" - "+ EventCurrencySymbol + $("#eventCostslider").slider("values", 1));
 
 
-	//   $('.dec-filter-header' ).parent().parent().css({"display": "block"});;
-	$('.decm_event_display').parent().parent().css({ "z-index": "0" });
+	// Stacking is handled in CSS — do not lower ancestor z-index when decm_event_display is present.
 
 	jQuery('input[name=\'dec_filter_organizer\'], .dec-organizer-list').on("click", function () {
 

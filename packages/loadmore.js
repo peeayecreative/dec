@@ -1,43 +1,70 @@
 jQuery(function ($) {
 
+  function decmResolveMainClass(moduleCssFilter) {
+    var mainClass = "";
+    var filter = moduleCssFilter;
+
+    if (filter != null && filter !== "") {
+      mainClass = "." + filter;
+    }
+
+    if (mainClass === "") {
+      var moduleClassInput = jQuery("input[name='dec-eventfeed-module-class']").val();
+      if (moduleClassInput != null && moduleClassInput !== "") {
+        mainClass = moduleClassInput.charAt(0) === "." ? moduleClassInput : "." + moduleClassInput;
+      }
+    }
+
+    if (mainClass === "") {
+      jQuery('.decm_event_display').each(function (i, item) {
+        var classfilter = jQuery(item).attr('class');
+        if (!classfilter) {
+          return;
+        }
+        jQuery.each(classfilter.split(/\s+/), function (index, className) {
+          if (filter != null && filter !== '' && className !== '') {
+            if (className === filter) {
+              mainClass = "." + className;
+            }
+          } else if (className.match(/decm_event_display_/g)) {
+            mainClass = "." + className;
+          }
+        });
+      });
+    }
+
+    return mainClass;
+  }
+
+  function decmGetEventFeed(mainClass) {
+    if (!mainClass || typeof mainClass !== "string") {
+      return null;
+    }
+    var feedKey = mainClass.charAt(0) === "." ? mainClass.substr(1) : mainClass;
+    if (!feedKey) {
+      return null;
+    }
+    return $(window)[0]["eventFeed" + feedKey] || null;
+  }
+
   jQuery('#eventfeed_current_page').val("1");
 
   jQuery(window).on("load", function () {
 
 
     let module_css_filter = jQuery("input[name='module-css-filter']").val();
-    if (module_css_filter != "") {
-      var mainClass = "." + module_css_filter;
+    var mainClass = decmResolveMainClass(module_css_filter);
+
+    if (!mainClass) {
+      return;
     }
-
-    if (module_css_filter == "" || module_css_filter == undefined) {
-      let module_css_filter = jQuery("input[name='dec-eventfeed-module-class']").val();
-      var mainClass = module_css_filter;
-    }
-
-
-    // $('.decm_event_display').each(function (i, item) {
-
-    //   var classfilter = jQuery(item).attr('class').split(/\s+/);
-
-    //   $.each(classfilter, function (index, item) {
-
-    //     if (module_css_filter != '' && item != '') {
-    //       if (item == module_css_filter) {
-    //         mainClass = "." + item;
-    //       }
-    //     } else if (item.match(/decm_event_display_/g)) {
-    //       mainClass = "." + item;
-    //     }
-
-    //   });
-    //   //test
-
-    // });
 
     let eventfeed_page = jQuery("input[name='eventfeed_page']").val();
 
-    var eventFeed = $(window)[0][`eventFeed${mainClass.substr(1, mainClass.length)}`];
+    var eventFeed = decmGetEventFeed(mainClass);
+    if (!eventFeed) {
+      return;
+    }
 
     let event_filter_page = jQuery(mainClass + " input[name='dec-eventfeed-page-translation']").val();
     let event_filter_page_first = jQuery(mainClass + " input[name='dec-eventfeed-first-translation']").val();
@@ -118,7 +145,10 @@ jQuery(function ($) {
 
       //   var mainClass = ".test123";
 
-      var eventFeed = $(window)[0][`eventFeed${mainClass.substr(1, mainClass.length)}`];
+      var eventFeed = decmGetEventFeed(mainClass);
+      if (!eventFeed) {
+        return;
+      }
 
       let event_filter_address = jQuery(mainClass + " input[name='dec-eventfeed-address']").val();
       let event_filter_state = jQuery(mainClass + " input[name='dec-eventfeed-state']").val();
@@ -262,7 +292,10 @@ jQuery(function ($) {
 
     //   console.log(mainClass,'event filter');
 
-    var eventFeed = $(window)[0][`eventFeed${mainClass.substr(1, mainClass.length)}`];
+    var eventFeed = decmGetEventFeed(mainClass);
+    if (!eventFeed) {
+      return;
+    }
 
     //  console.log(mainClass);
 
@@ -402,7 +435,10 @@ jQuery(function ($) {
     });
 
     //  console.log(mainClass);
-    var eventFeed = $(window)[0][`eventFeed${mainClass.substr(1, mainClass.length)}`];
+    var eventFeed = decmGetEventFeed(mainClass);
+    if (!eventFeed) {
+      return;
+    }
 
 
     // console.log(mainClass,'button load class');
