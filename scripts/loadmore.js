@@ -239,6 +239,32 @@ jQuery(document).ready(function ($) {
         return momentFormat;
     }
 
+    function deriveShortenedStartMomentFormat(dateDetailsFormat, includeYear) {
+        var format = (dateDetailsFormat || '').trim() || 'F d, Y';
+        if (includeYear) {
+            if (format.indexOf('F') !== -1) {
+                return 'MMMM D, YYYY';
+            }
+            if (format.indexOf('M') !== -1) {
+                return 'MMM D, YYYY';
+            }
+            if (format.indexOf('m') !== -1) {
+                return 'MM/DD/YYYY';
+            }
+            return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '')) + ', YYYY';
+        }
+        if (format.indexOf('F') !== -1) {
+            return 'MMMM D';
+        }
+        if (format.indexOf('M') !== -1) {
+            return 'MMM D';
+        }
+        if (format.indexOf('m') !== -1) {
+            return 'M/D';
+        }
+        return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '') || 'M j');
+    }
+
     function decm_get_event(button, page, per_page, hiddenF) {
 
         const e = button;
@@ -298,6 +324,8 @@ jQuery(document).ready(function ($) {
             'show_end_date_details': '',
             'date_detail_label': '',
             'date_details_format': '',
+            'shorten_multidate': 'on',
+            'start_date_format': '',
             'show_time_details': '',
             'details_time_label': '',
             'details_time_format': '',
@@ -349,7 +377,13 @@ jQuery(document).ready(function ($) {
             'page': '',
             'per_page': '3',
             'layout': 'grid',
+            'layout_desktop': '',
+            'layout_tablet': '',
+            'layout_phone': '',
             'layout_type': '',
+            'layout_type_desktop': '',
+            'layout_type_tablet': '',
+            'layout_type_phone': '',
             'show_callout_box_starttime': '',
             'show_colon_label': '',
             'show_timezone': 'off',
@@ -479,7 +513,9 @@ jQuery(document).ready(function ($) {
             // For initial load, use responsive events_count
             params['per_page'] = getResponsiveEventsCount(params);
         }
-        if (params.layout == 'grid' || params.layout == 'cover') {
+        if (window.decmEventDisplayResponsiveLayout) {
+            window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+        } else if (params.layout == 'grid' || params.layout == 'cover') {
             params.layout_type = '';
         }
         // console.log(params);
@@ -709,6 +745,11 @@ jQuery(document).ready(function ($) {
                 var events = response.data.events;
                 var container = thiscontainer;
 
+                if (window.decmEventDisplayResponsiveLayout) {
+                    window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+                    window.decmEventDisplayResponsiveLayout.updateContainerLayoutClasses(container, params.layout, params);
+                }
+
                 // Re-retrieve website link settings before rendering (CRITICAL for pagination)
                 ['website_link', 'website_link_target', 'custom_web_link'].forEach(function (fieldName) {
                     var retrievedValue = hiddenFieldsContainer.find('input.hidden-data-field[name="' + fieldName + '"]').val() || '';
@@ -820,8 +861,24 @@ jQuery(document).ready(function ($) {
                     // -------------------------------
                     // Date Details (PHP 'F d, Y')
                     const momentFormatDetails = phpToMomentFormat(params.date_details_format || 'F d, Y');
-                    const formattedDate_startDate_Details = fmt(startM, momentFormatDetails) || (event.date || event.callout_start_date || '');
-                    const formattedDate_endDate_Details = fmt(endM, momentFormatDetails) || (event.callout_end_date || '');
+                    const shortenOn = params.shorten_multidate === 'on' || params.shorten_multidate === 'true';
+                    const isMultidayDetails = startM && endM && startM.isValid() && endM.isValid() && !startM.isSame(endM, 'day');
+                    let formattedDate_startDate_Details = fmt(startM, momentFormatDetails) || (event.date || event.callout_start_date || '');
+                    let formattedDate_endDate_Details = fmt(endM, momentFormatDetails) || (event.callout_end_date || '');
+                    if (shortenOn && isMultidayDetails) {
+                        if (params.start_date_format) {
+                            formattedDate_startDate_Details = fmt(startM, phpToMomentFormat(params.start_date_format));
+                        } else if (startM.year() === endM.year()) {
+                            formattedDate_startDate_Details = fmt(startM, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', false));
+                        } else {
+                            formattedDate_startDate_Details = fmt(startM, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', true));
+                        }
+                        if (startM.format('MMM YYYY') === endM.format('MMM YYYY')) {
+                            formattedDate_endDate_Details = fmt(endM, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'D, YYYY');
+                        } else {
+                            formattedDate_endDate_Details = fmt(endM, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'MMM D, YYYY');
+                        }
+                    }
 
                     // -------------------------------
                     // Time Details (PHP 'g:i a')
@@ -896,22 +953,17 @@ jQuery(document).ready(function ($) {
 
                     const buttonAlign = getResponsiveButtonAlign(params);
                     const buttonAlignEnabledClass = (buttonAlign === 'on') ? 'button-align-enabled' : '';
-                    var coverBgStyle = '';
                     var coverOverlayOn = false;
                     var coverHasImageSrc = false;
                     if (params.layout === 'cover') {
                         coverOverlayOn = isCoverOverlayOn(params.cover_feature_image_overlay_on);
                         coverHasImageSrc = isFeatureImageOn(params.show_feature_image) && event.image &&
                             (event.image.match(/src=["']([^"']+)["']/) || event.image.match(/src=([^\s>]+)/));
-                        if (!coverHasImageSrc && !coverOverlayOn && params.cover_image_overlay_color) {
-                            coverBgStyle = ' style="background-color: ' + params.cover_image_overlay_color + '; background: ' + params.cover_image_overlay_color + ';"';
-                        }
                     }
                     eventHtml += '<div class="event-container ' + layoutType + ' cs-col-' + columns + ' ' + buttonAlignEnabledClass + '" ' +
                         'data-columns-desktop="' + columnsDesktop + '" ' +
                         'data-columns-tablet="' + columnsTablet + '" ' +
-                        'data-columns-phone="' + columnsPhone + '"' +
-                        coverBgStyle + '>';
+                        'data-columns-phone="' + columnsPhone + '">';
                     if (params.layout === 'cover') {
                         if (coverOverlayOn) {
                             var coverOverlayStyle = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;';
@@ -1944,9 +1996,16 @@ jQuery(document).ready(function ($) {
                     calculateEqualHeights(thiscontainer);
                 }, 200);
                 updatePagination(response.data.pagination, params, $(e).closest('.pagination-container'));
+                responsiveLayoutSyncInProgress = false;
+                if (responsiveLayoutSyncQueued) {
+                    responsiveLayoutSyncQueued = false;
+                    scheduleResponsiveLayoutSync(true);
+                }
                 // console.log(response.data.pagination);
             },
             error: function () {
+                responsiveLayoutSyncInProgress = false;
+                responsiveLayoutSyncQueued = false;
                 alert(__t("AJAX error occurred!"));
             }
         });
@@ -2082,13 +2141,90 @@ jQuery(document).ready(function ($) {
 
     }
 
-    // Global resize listener for equal heights calculation
-    var resizeTimeout;
+    // Global listeners for responsive layout switching (resize + matchMedia for DevTools).
+    var responsiveLayoutResizeTimeout;
+    var responsiveLayoutSyncInProgress = false;
+    var responsiveLayoutSyncQueued = false;
+
+    function syncResponsiveEventFeedLayouts(forceRerender) {
+        if (!window.decmEventDisplayResponsiveLayout) {
+            return;
+        }
+
+        if (responsiveLayoutSyncInProgress) {
+            responsiveLayoutSyncQueued = true;
+            return;
+        }
+
+        var responsive = window.decmEventDisplayResponsiveLayout;
+        var breakpoint = responsive.getScreenBreakpoint();
+        var needsRerender = false;
+
+        $('.decm_event_display, .event-display').each(function () {
+            var $module = $(this);
+            var $container = $module.find('.events-main__container').first();
+            if (!$container.length) {
+                return;
+            }
+
+            var params = responsive.readLayoutParamsFromContainer
+                ? responsive.readLayoutParamsFromContainer($container)
+                : {};
+
+            if (!responsive.readLayoutParamsFromContainer) {
+                $container.find('input.hidden-data-field').each(function () {
+                    var $field = $(this);
+                    params[$field.attr('name')] = $field.val() || '';
+                });
+            }
+
+            responsive.applyResponsiveLayoutParams(params, breakpoint);
+            var expectedLayout = params.layout;
+            var currentLayout = responsive.getLayoutFromContainer($container);
+
+            if (currentLayout !== expectedLayout || $container.attr('data-active-layout') !== expectedLayout) {
+                var $paginationContainer = $module.find('.pagination-container').first();
+                if ($paginationContainer.length) {
+                    responsiveLayoutSyncInProgress = true;
+                    needsRerender = true;
+                    var hiddenF = $container.find('.hidden_feild');
+                    decm_get_event($paginationContainer, 1, '', hiddenF);
+                }
+            }
+        });
+
+        if (!needsRerender) {
+            responsiveLayoutSyncQueued = false;
+        }
+    }
+
+    function scheduleResponsiveLayoutSync(forceRerender) {
+        clearTimeout(responsiveLayoutResizeTimeout);
+        responsiveLayoutResizeTimeout = setTimeout(function () {
+            syncResponsiveEventFeedLayouts(forceRerender);
+        }, 150);
+    }
+
+    syncResponsiveEventFeedLayouts(false);
+
+    if (window.decmEventDisplayResponsiveLayout && window.decmEventDisplayResponsiveLayout.onBreakpointChange) {
+        window.decmEventDisplayResponsiveLayout.onBreakpointChange(function () {
+            scheduleResponsiveLayoutSync(true);
+        });
+    }
+
+    $(window).on('resize orientationchange', function() {
+        scheduleResponsiveLayoutSync(true);
+    });
+
+    var equalHeightsResizeTimeout;
     $(window).on('resize', function() {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(function() {
+        clearTimeout(equalHeightsResizeTimeout);
+        equalHeightsResizeTimeout = setTimeout(function() {
             $('.events-main__container.button-align-enabled').each(function() {
-                calculateEqualHeights($(this));
+                if (typeof calculateEqualHeights === 'function') {
+                    calculateEqualHeights($(this));
+                }
             });
         }, 150);
     });
