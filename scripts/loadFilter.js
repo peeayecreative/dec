@@ -1537,6 +1537,32 @@ jQuery(function ($) {
 		return momentFormat;
 	}
 
+	function deriveShortenedStartMomentFormat(dateDetailsFormat, includeYear) {
+		var format = (dateDetailsFormat || '').trim() || 'F d, Y';
+		if (includeYear) {
+			if (format.indexOf('F') !== -1) {
+				return 'MMMM D, YYYY';
+			}
+			if (format.indexOf('M') !== -1) {
+				return 'MMM D, YYYY';
+			}
+			if (format.indexOf('m') !== -1) {
+				return 'MM/DD/YYYY';
+			}
+			return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '')) + ', YYYY';
+		}
+		if (format.indexOf('F') !== -1) {
+			return 'MMMM D';
+		}
+		if (format.indexOf('M') !== -1) {
+			return 'MMM D';
+		}
+		if (format.indexOf('m') !== -1) {
+			return 'M/D';
+		}
+		return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '') || 'M j');
+	}
+
 	function updatePagination(paginationData, params, $paginationContainer) {
 		var paginationHtml = '';
 		switch (paginationData.pagination_type) {
@@ -1800,6 +1826,8 @@ jQuery(function ($) {
 			'show_end_date_details': '',
 			'date_detail_label': '',
 			'date_details_format': '',
+			'shorten_multidate': 'on',
+			'start_date_format': '',
 			'show_time_details': '',
 			'details_time_label': '',
 			'details_time_format': '',
@@ -1871,7 +1899,13 @@ jQuery(function ($) {
 			'page': '',
 			'per_page': '3',
 			'layout': 'grid',
+			'layout_desktop': '',
+			'layout_tablet': '',
+			'layout_phone': '',
 			'layout_type': '',
+			'layout_type_desktop': '',
+			'layout_type_tablet': '',
+			'layout_type_phone': '',
 			'show_callout_box_starttime': '',
 			'show_colon_label': '',
 			'show_timezone': 'off',
@@ -2075,7 +2109,9 @@ jQuery(function ($) {
 		params['page'] = '1';
 		// Use responsive events_count for per_page
 		params['per_page'] = getResponsiveEventsCount(params);
-		if (params.layout == 'grid' || params.layout == 'cover') {
+		if (window.decmEventDisplayResponsiveLayout) {
+			window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+		} else if (params.layout == 'grid' || params.layout == 'cover') {
 			params.layout_type = '';
 		}
 		var data = params;
@@ -2311,6 +2347,11 @@ jQuery(function ($) {
 				var events = response.data.events;
 				var container = thiscontainer;
 
+				if (window.decmEventDisplayResponsiveLayout) {
+					window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+					window.decmEventDisplayResponsiveLayout.updateContainerLayoutClasses(container, params.layout, params);
+				}
+
 				// Re-retrieve organizer_detail_label from hidden fields before rendering (CRITICAL for pagination)
 				// This ensures the label value is always available even if params weren't set correctly
 				// console.log('=== Organizer Label Debug - Start of Success Callback ===');
@@ -2442,8 +2483,24 @@ jQuery(function ($) {
 					// -------------------------------
 					// Call out Date Details (PHP 'F d, Y')
 					var momentFormatDetails = phpToMomentFormat(params.date_details_format || 'F d, Y');
+					var shortenOn = params.shorten_multidate === 'on' || params.shorten_multidate === 'true';
+					var isMultidayDetails = parsedDate && parsedEndDate && parsedDate.isValid() && parsedEndDate.isValid() && !parsedDate.isSame(parsedEndDate, 'day');
 					var formattedDate_startDate_Details = fmt(parsedDate, momentFormatDetails) || (event.date || event.callout_start_date || '');
 					var formattedDate_endDate_Details = fmt(parsedEndDate, momentFormatDetails) || (event.callout_end_date || '');
+					if (shortenOn && isMultidayDetails) {
+						if (params.start_date_format) {
+							formattedDate_startDate_Details = fmt(parsedDate, phpToMomentFormat(params.start_date_format));
+						} else if (parsedDate.year() === parsedEndDate.year()) {
+							formattedDate_startDate_Details = fmt(parsedDate, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', false));
+						} else {
+							formattedDate_startDate_Details = fmt(parsedDate, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', true));
+						}
+						if (parsedDate.format('MMM YYYY') === parsedEndDate.format('MMM YYYY')) {
+							formattedDate_endDate_Details = fmt(parsedEndDate, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'D, YYYY');
+						} else {
+							formattedDate_endDate_Details = fmt(parsedEndDate, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'MMM D, YYYY');
+						}
+					}
 
 					// -------------------------------
 					// Call out Time Details (PHP 'g:i a')
@@ -2503,22 +2560,17 @@ jQuery(function ($) {
 
 					const buttonAlign = getResponsiveButtonAlign(params);
 					const buttonAlignEnabledClass = (buttonAlign === 'on') ? 'button-align-enabled' : '';
-					var coverBgStyle = '';
 					var coverOverlayOn = false;
 					var coverHasImageSrc = false;
 					if (params.layout === 'cover') {
 						coverOverlayOn = isCoverOverlayOn(params.cover_feature_image_overlay_on);
 						coverHasImageSrc = isFeatureImageOn(params.show_feature_image) && event.image &&
 							(event.image.match(/src=["']([^"']+)["']/) || event.image.match(/src=([^\s>]+)/));
-						if (!coverHasImageSrc && !coverOverlayOn && params.cover_image_overlay_color) {
-							coverBgStyle = ' style="background-color: ' + params.cover_image_overlay_color + '; background: ' + params.cover_image_overlay_color + ';"';
-						}
 					}
 					eventHtml += '<div class="event-container ' + layoutType + ' cs-col-' + columns + ' ' + buttonAlignEnabledClass + '" ' +
 						'data-columns-desktop="' + columnsDesktop + '" ' +
 						'data-columns-tablet="' + columnsTablet + '" ' +
-						'data-columns-phone="' + columnsPhone + '"' +
-						coverBgStyle + '>';
+						'data-columns-phone="' + columnsPhone + '">';
 					if (params.layout === 'cover') {
 						if (coverOverlayOn) {
 							var coverOverlayStyle = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;';
