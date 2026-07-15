@@ -3,6 +3,28 @@ jQuery(function ($) {
 		? function (s) { return wp.i18n.__(s, 'decm-divi-event-calendar-module'); }
 		: function (s) { return s; };
 
+	/**
+	 * Keep the open filter item above wrapped sibling filters (CSS class only — no inline z-index).
+	 */
+	function decm_syncFilterDropdownStacking() {
+		$('.decm_event_filter_child').each(function () {
+			var $child = $(this);
+			var isOpen = $child.find('.dec-filter-list').filter(function () {
+				return $(this).is(':visible');
+			}).length > 0;
+
+			$child.toggleClass('dec-filter-dropdown-active', isOpen);
+			$child.find('.dec-filter-bar').toggleClass('dec-filter-dropdown-active', isOpen);
+		});
+	}
+
+	function decm_tagEventFilterDateRangePicker() {
+		var drp = $('#reportrange').data('daterangepicker');
+		if (drp && drp.container) {
+			drp.container.addClass('decm-event-filter-daterangepicker');
+		}
+	}
+
 	function translateMoreInfoButtonText(text) {
 		var normalized = (text || '').trim().toLowerCase();
 		if (!normalized || normalized === 'more info') {
@@ -368,9 +390,11 @@ jQuery(function ($) {
 		jQuery.each(container, function (key, value) {
 			if (!$(value).is(e.target)
 				&& $(value).has(e.target).length === 0) {
-				$(value).fadeOut();
+				$(value).fadeOut(decm_syncFilterDropdownStacking);
 			}
 		});
+
+		decm_syncFilterDropdownStacking();
 
 	});
 
@@ -473,9 +497,14 @@ jQuery(function ($) {
 				[Next_month]: [moment().add(1, 'month').startOf('month'), moment().add(1, 'month').endOf('month')]
 			}
 		});
+		decm_tagEventFilterDateRangePicker();
 	} else {
 		// console.warn('DateRangePicker library not loaded. Date range functionality will be limited.');
 	}
+
+	$('#reportrange').on('show.daterangepicker', function () {
+		decm_tagEventFilterDateRangePicker();
+	});
 
 	jQuery('[data-range-key="Custom Range"]').text(Custom_range);
 
@@ -530,8 +559,11 @@ jQuery(function ($) {
 	}
 
 
-	// Stacking is handled in CSS (event-filter-parent/module.scss). Do not manipulate z-index here —
-	// inline JS changes broke filter selection after the dropdown stacking fix.
+	// Stacking is handled in CSS (event-filter-parent/module.scss + child-module/module.scss).
+	// loadFilter.js only toggles .dec-filter-dropdown-active — never inline z-index.
+	$(document).on('click', '.dec-filter-bar, .dec-filter-label', function () {
+		setTimeout(decm_syncFilterDropdownStacking, 0);
+	});
 
 	jQuery('input[name=\'dec_filter_organizer\'], .dec-organizer-list').on("click", function () {
 
@@ -1486,7 +1518,144 @@ jQuery(function ($) {
 		}
 		var fontClass = (iconFont === 'FontAwesome') ? 'dec-numeric-icon-font-fa' : 'dec-numeric-icon-font-et';
 		var posClass = position === 'first' ? 'dec-numeric-icon-first' : 'dec-numeric-icon-last';
-		return '<span class="dec-numeric-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + iconChar + '</span>';
+		return '<span class="dec-numeric-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + escapeHtml(iconChar) + '</span>';
+	}
+
+	function buildPagedPaginationIconSpan(iconChar, iconFont, position) {
+		if (!iconChar) {
+			return '';
+		}
+		var fontClass = (iconFont === 'FontAwesome') ? 'dec-paged-icon-font-fa' : 'dec-paged-icon-font-et';
+		var posClass = position === 'prev' ? 'dec-paged-icon-prev' : 'dec-paged-icon-next';
+		return '<span class="dec-paged-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + escapeHtml(iconChar) + '</span>';
+	}
+
+	function findPagedPaginationHiddenFields($paginationContainer) {
+		var $hidden = $paginationContainer.siblings('.events-main__container').find('.hidden_feild');
+		if ($hidden.length) {
+			return $hidden;
+		}
+		$hidden = $paginationContainer.closest('.event_calendar_module__inner, .decm_event_display, [class*="event-display_"]').find('.hidden_feild').first();
+		return $hidden;
+	}
+
+	function normalizePagedButtonAlign(align, defaultAlign) {
+		var value = (align || '').toString().trim().toLowerCase();
+		if (value === 'left' || value === 'center' || value === 'right') {
+			return value;
+		}
+		return defaultAlign || 'left';
+	}
+
+	function getPagedPaginationAlignClasses(prevAlign, nextAlign, hasPrev, hasNext) {
+		var prev = normalizePagedButtonAlign(prevAlign, 'left');
+		var next = normalizePagedButtonAlign(nextAlign, 'right');
+		var classes = ['dec-paged-prev-align-' + prev, 'dec-paged-next-align-' + next];
+
+		if (hasPrev && hasNext) {
+			if (prev === next) {
+				classes.push('dec-paged-group-' + prev);
+			} else if (prev === 'left' && next === 'right') {
+				classes.push('dec-paged-split-lr');
+			} else if (prev === 'right' && next === 'left') {
+				classes.push('dec-paged-split-rl');
+			} else {
+				classes.push('dec-paged-split-mixed');
+			}
+		} else if (hasNext && !hasPrev) {
+			classes.push('dec-paged-single', 'dec-paged-single-next', 'dec-paged-single-' + next);
+		} else if (hasPrev && !hasNext) {
+			classes.push('dec-paged-single', 'dec-paged-single-prev', 'dec-paged-single-' + prev);
+		}
+
+		return classes.join(' ');
+	}
+
+	function getPagedPaginationLayoutMode(prevAlign, nextAlign, hasPrev, hasNext) {
+		var prev = normalizePagedButtonAlign(prevAlign, 'left');
+		var next = normalizePagedButtonAlign(nextAlign, 'right');
+
+		if (hasPrev && hasNext) {
+			if (prev === next) {
+				return 'group-' + prev;
+			}
+			if (prev === 'left' && next === 'right') {
+				return 'split-lr';
+			}
+			if (prev === 'right' && next === 'left') {
+				return 'split-rl';
+			}
+			return 'split-mixed';
+		}
+		if (hasNext && !hasPrev) {
+			return 'single-' + next;
+		}
+		if (hasPrev && !hasNext) {
+			return 'single-' + prev;
+		}
+		return 'empty';
+	}
+
+	function getPagedPaginationContainerStyle(prevAlign, nextAlign, hasPrev, hasNext) {
+		var mode = getPagedPaginationLayoutMode(prevAlign, nextAlign, hasPrev, hasNext);
+		var styles = ['width:100%', 'gap:1em', 'align-items:center', 'float:none', 'clear:both'];
+
+		switch (mode) {
+			case 'group-left':
+				styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:flex-start');
+				break;
+			case 'group-center':
+				styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:center');
+				break;
+			case 'group-right':
+				styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:flex-end');
+				break;
+			case 'split-lr':
+				styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:space-between');
+				break;
+			case 'split-rl':
+				styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:space-between', 'flex-direction:row-reverse');
+				break;
+			case 'split-mixed':
+				styles.push('display:grid !important', 'grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)');
+				break;
+			case 'single-left':
+				styles.push('display:flex !important', 'justify-content:flex-start');
+				break;
+			case 'single-center':
+				styles.push('display:flex !important', 'justify-content:center');
+				break;
+			case 'single-right':
+				styles.push('display:flex !important', 'justify-content:flex-end');
+				break;
+			default:
+				break;
+		}
+
+		return styles.join(';');
+	}
+
+	function getPagedPaginationLinkStyle(align) {
+		var normalized = normalizePagedButtonAlign(align, 'left');
+		var col = normalized === 'left' ? '1' : (normalized === 'center' ? '2' : '3');
+		var self = normalized === 'left' ? 'start' : (normalized === 'center' ? 'center' : 'end');
+		return 'grid-column:' + col + ';grid-row:1;justify-self:' + self + ';float:none !important;clear:none !important;margin:0 !important;';
+	}
+
+	function getPagedPaginationLayoutAttributes(prevAlign, nextAlign, hasPrev, hasNext) {
+		var prev = normalizePagedButtonAlign(prevAlign, 'left');
+		var next = normalizePagedButtonAlign(nextAlign, 'right');
+		var mode = getPagedPaginationLayoutMode(prev, next, hasPrev, hasNext);
+		var baseLinkStyle = 'float:none !important;clear:none !important;margin:0 !important;';
+
+		return {
+			className: getPagedPaginationAlignClasses(prev, next, hasPrev, hasNext),
+			containerStyle: getPagedPaginationContainerStyle(prev, next, hasPrev, hasNext),
+			prevStyle: mode === 'split-mixed' && hasPrev ? getPagedPaginationLinkStyle(prev) : baseLinkStyle,
+			nextStyle: mode === 'split-mixed' && hasNext ? getPagedPaginationLinkStyle(next) : baseLinkStyle,
+			prevData: prev,
+			nextData: next
+		};
 	}
 
 	function escapeHtml(text) {
@@ -1537,18 +1706,60 @@ jQuery(function ($) {
 		return momentFormat;
 	}
 
+	function deriveShortenedStartMomentFormat(dateDetailsFormat, includeYear) {
+		var format = (dateDetailsFormat || '').trim() || 'F d, Y';
+		if (includeYear) {
+			if (format.indexOf('F') !== -1) {
+				return 'MMMM D, YYYY';
+			}
+			if (format.indexOf('M') !== -1) {
+				return 'MMM D, YYYY';
+			}
+			if (format.indexOf('m') !== -1) {
+				return 'MM/DD/YYYY';
+			}
+			return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '')) + ', YYYY';
+		}
+		if (format.indexOf('F') !== -1) {
+			return 'MMMM D';
+		}
+		if (format.indexOf('M') !== -1) {
+			return 'MMM D';
+		}
+		if (format.indexOf('m') !== -1) {
+			return 'M/D';
+		}
+		return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '') || 'M j');
+	}
+
 	function updatePagination(paginationData, params, $paginationContainer) {
 		var paginationHtml = '';
 		switch (paginationData.pagination_type) {
-			case 'paged':
+			case 'paged': {
+				const $hidden = findPagedPaginationHiddenFields($paginationContainer);
+				const prevIconChar = ($hidden.find('input[name="paged_prev_button_icon"]').val() || '').trim();
+				const prevIconFont = $hidden.find('input[name="paged_prev_button_icon_font"]').val() || 'ETmodules';
+				const nextIconChar = ($hidden.find('input[name="paged_next_button_icon"]').val() || '').trim();
+				const nextIconFont = $hidden.find('input[name="paged_next_button_icon_font"]').val() || 'ETmodules';
+				const prevIconClass = prevIconChar ? ' dec-paged-custom-icon dec-paged-inline-icon' : '';
+				const nextIconClass = nextIconChar ? ' dec-paged-custom-icon dec-paged-inline-icon' : '';
+				const prevIconSpan = buildPagedPaginationIconSpan(prevIconChar, prevIconFont, 'prev');
+				const nextIconSpan = buildPagedPaginationIconSpan(nextIconChar, nextIconFont, 'next');
+				const hasPrev = paginationData.current_page > 1;
+				const hasNext = paginationData.current_page < paginationData.total_pages;
+				const prevAlign = $hidden.find('input[name="paged_prev_button_align"]').val() || 'left';
+				const nextAlign = $hidden.find('input[name="paged_next_button_align"]').val() || 'right';
+				const pagedLayout = getPagedPaginationLayoutAttributes(prevAlign, nextAlign, hasPrev, hasNext);
+
 				paginationHtml = `
-                <div class="dec-pagination dec-prev-next">
-                    ${paginationData.current_page > 1 ?
-						`<a href="#" class="prev ecs-page_alignment_left" data-page="${paginationData.current_page - 1}">${__t(params.prv_link_btn)}</a>` : ''}
-                    ${paginationData.current_page < paginationData.total_pages ?
-						`<a href="#" class="next ecs-page_alignment_right" data-page="${paginationData.current_page + 1}">${__t(params.next_link_btn)}</a>` : ''}
+                <div class="dec-pagination dec-prev-next ${pagedLayout.className}" style="${pagedLayout.containerStyle}" data-paged-prev-align="${pagedLayout.prevData}" data-paged-next-align="${pagedLayout.nextData}">
+                    ${hasPrev ?
+						`<a href="#" class="prev${prevIconClass}" style="${pagedLayout.prevStyle}" data-page="${paginationData.current_page - 1}">${prevIconSpan}${__t(params.prv_link_btn)}</a>` : ''}
+                    ${hasNext ?
+						`<a href="#" class="next${nextIconClass}" style="${pagedLayout.nextStyle}" data-page="${paginationData.current_page + 1}">${__t(params.next_link_btn)}${nextIconSpan}</a>` : ''}
                 </div>`;
 				break;
+			}
 
 			case 'numeric_pagination': {
 				const total = Number(paginationData.total_pages) || 1;
@@ -1639,6 +1850,9 @@ jQuery(function ($) {
 
 		$paginationContainer.find('.dec-pagination').remove();
 		$paginationContainer.html(paginationHtml);
+		if (window.decmEventDisplayResponsiveLayout && typeof window.decmEventDisplayResponsiveLayout.applyPagedPaginationLayout === 'function') {
+			window.decmEventDisplayResponsiveLayout.applyPagedPaginationLayout($paginationContainer.find('.dec-pagination.dec-prev-next'));
+		}
 
 	}
 
@@ -1800,6 +2014,8 @@ jQuery(function ($) {
 			'show_end_date_details': '',
 			'date_detail_label': '',
 			'date_details_format': '',
+			'shorten_multidate': 'on',
+			'start_date_format': '',
 			'show_time_details': '',
 			'details_time_label': '',
 			'details_time_format': '',
@@ -1867,11 +2083,18 @@ jQuery(function ($) {
 			'load_more_text': 'Load More',
 			'excerpt_length': '27',
 			'show_excerpt': 'off',
+			'excerpt_content': 'show_excerpt',
 			'show_pagination': 'off',
 			'page': '',
 			'per_page': '3',
 			'layout': 'grid',
+			'layout_desktop': '',
+			'layout_tablet': '',
+			'layout_phone': '',
 			'layout_type': '',
+			'layout_type_desktop': '',
+			'layout_type_tablet': '',
+			'layout_type_phone': '',
 			'show_callout_box_starttime': '',
 			'show_colon_label': '',
 			'show_timezone': 'off',
@@ -2075,7 +2298,9 @@ jQuery(function ($) {
 		params['page'] = '1';
 		// Use responsive events_count for per_page
 		params['per_page'] = getResponsiveEventsCount(params);
-		if (params.layout == 'grid' || params.layout == 'cover') {
+		if (window.decmEventDisplayResponsiveLayout) {
+			window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+		} else if (params.layout == 'grid' || params.layout == 'cover') {
 			params.layout_type = '';
 		}
 		var data = params;
@@ -2311,6 +2536,11 @@ jQuery(function ($) {
 				var events = response.data.events;
 				var container = thiscontainer;
 
+				if (window.decmEventDisplayResponsiveLayout) {
+					window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+					window.decmEventDisplayResponsiveLayout.updateContainerLayoutClasses(container, params.layout, params);
+				}
+
 				// Re-retrieve organizer_detail_label from hidden fields before rendering (CRITICAL for pagination)
 				// This ensures the label value is always available even if params weren't set correctly
 				// console.log('=== Organizer Label Debug - Start of Success Callback ===');
@@ -2442,8 +2672,24 @@ jQuery(function ($) {
 					// -------------------------------
 					// Call out Date Details (PHP 'F d, Y')
 					var momentFormatDetails = phpToMomentFormat(params.date_details_format || 'F d, Y');
+					var shortenOn = params.shorten_multidate === 'on' || params.shorten_multidate === 'true';
+					var isMultidayDetails = parsedDate && parsedEndDate && parsedDate.isValid() && parsedEndDate.isValid() && !parsedDate.isSame(parsedEndDate, 'day');
 					var formattedDate_startDate_Details = fmt(parsedDate, momentFormatDetails) || (event.date || event.callout_start_date || '');
 					var formattedDate_endDate_Details = fmt(parsedEndDate, momentFormatDetails) || (event.callout_end_date || '');
+					if (shortenOn && isMultidayDetails) {
+						if (params.start_date_format) {
+							formattedDate_startDate_Details = fmt(parsedDate, phpToMomentFormat(params.start_date_format));
+						} else if (parsedDate.year() === parsedEndDate.year()) {
+							formattedDate_startDate_Details = fmt(parsedDate, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', false));
+						} else {
+							formattedDate_startDate_Details = fmt(parsedDate, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', true));
+						}
+						if (parsedDate.format('MMM YYYY') === parsedEndDate.format('MMM YYYY')) {
+							formattedDate_endDate_Details = fmt(parsedEndDate, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'D, YYYY');
+						} else {
+							formattedDate_endDate_Details = fmt(parsedEndDate, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'MMM D, YYYY');
+						}
+					}
 
 					// -------------------------------
 					// Call out Time Details (PHP 'g:i a')
@@ -2503,22 +2749,17 @@ jQuery(function ($) {
 
 					const buttonAlign = getResponsiveButtonAlign(params);
 					const buttonAlignEnabledClass = (buttonAlign === 'on') ? 'button-align-enabled' : '';
-					var coverBgStyle = '';
 					var coverOverlayOn = false;
 					var coverHasImageSrc = false;
 					if (params.layout === 'cover') {
 						coverOverlayOn = isCoverOverlayOn(params.cover_feature_image_overlay_on);
 						coverHasImageSrc = isFeatureImageOn(params.show_feature_image) && event.image &&
 							(event.image.match(/src=["']([^"']+)["']/) || event.image.match(/src=([^\s>]+)/));
-						if (!coverHasImageSrc && !coverOverlayOn && params.cover_image_overlay_color) {
-							coverBgStyle = ' style="background-color: ' + params.cover_image_overlay_color + '; background: ' + params.cover_image_overlay_color + ';"';
-						}
 					}
 					eventHtml += '<div class="event-container ' + layoutType + ' cs-col-' + columns + ' ' + buttonAlignEnabledClass + '" ' +
 						'data-columns-desktop="' + columnsDesktop + '" ' +
 						'data-columns-tablet="' + columnsTablet + '" ' +
-						'data-columns-phone="' + columnsPhone + '"' +
-						coverBgStyle + '>';
+						'data-columns-phone="' + columnsPhone + '">';
 					if (params.layout === 'cover') {
 						if (coverOverlayOn) {
 							var coverOverlayStyle = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;';
@@ -3378,7 +3619,7 @@ jQuery(function ($) {
 					if (params.show_excerpt === 'on') {
 						let t = '';
 						if (params.excerpt_content === 'show_desc' && event.post_description) {
-							t = event.post_description;
+							t = String(event.post_description).replace(/<[^>]*>/g, '');
 						} else if (event.post_excerpt) {
 							t = event.post_excerpt;
 						}
