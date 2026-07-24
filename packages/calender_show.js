@@ -1589,5 +1589,3 @@ document.addEventListener("DOMContentLoaded", function () {
 function getMonthFromString(mon, year) {
   return new Date(Date.parse(mon + " 1, " + year)).getMonth();
 }
-
-
