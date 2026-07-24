@@ -188,7 +188,144 @@ jQuery(document).ready(function ($) {
         }
         var fontClass = (iconFont === 'FontAwesome') ? 'dec-numeric-icon-font-fa' : 'dec-numeric-icon-font-et';
         var posClass = position === 'first' ? 'dec-numeric-icon-first' : 'dec-numeric-icon-last';
-        return '<span class="dec-numeric-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + iconChar + '</span>';
+        return '<span class="dec-numeric-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + escapeHtml(iconChar) + '</span>';
+    }
+
+    function buildPagedPaginationIconSpan(iconChar, iconFont, position) {
+        if (!iconChar) {
+            return '';
+        }
+        var fontClass = (iconFont === 'FontAwesome') ? 'dec-paged-icon-font-fa' : 'dec-paged-icon-font-et';
+        var posClass = position === 'prev' ? 'dec-paged-icon-prev' : 'dec-paged-icon-next';
+        return '<span class="dec-paged-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + escapeHtml(iconChar) + '</span>';
+    }
+
+    function findPagedPaginationHiddenFields($paginationContainer) {
+        var $hidden = $paginationContainer.siblings('.events-main__container').find('.hidden_feild');
+        if ($hidden.length) {
+            return $hidden;
+        }
+        $hidden = $paginationContainer.closest('.event_calendar_module__inner, .decm_event_display, [class*="event-display_"]').find('.hidden_feild').first();
+        return $hidden;
+    }
+
+    function normalizePagedButtonAlign(align, defaultAlign) {
+        var value = (align || '').toString().trim().toLowerCase();
+        if (value === 'left' || value === 'center' || value === 'right') {
+            return value;
+        }
+        return defaultAlign || 'left';
+    }
+
+    function getPagedPaginationAlignClasses(prevAlign, nextAlign, hasPrev, hasNext) {
+        var prev = normalizePagedButtonAlign(prevAlign, 'left');
+        var next = normalizePagedButtonAlign(nextAlign, 'right');
+        var classes = ['dec-paged-prev-align-' + prev, 'dec-paged-next-align-' + next];
+
+        if (hasPrev && hasNext) {
+            if (prev === next) {
+                classes.push('dec-paged-group-' + prev);
+            } else if (prev === 'left' && next === 'right') {
+                classes.push('dec-paged-split-lr');
+            } else if (prev === 'right' && next === 'left') {
+                classes.push('dec-paged-split-rl');
+            } else {
+                classes.push('dec-paged-split-mixed');
+            }
+        } else if (hasNext && !hasPrev) {
+            classes.push('dec-paged-single', 'dec-paged-single-next', 'dec-paged-single-' + next);
+        } else if (hasPrev && !hasNext) {
+            classes.push('dec-paged-single', 'dec-paged-single-prev', 'dec-paged-single-' + prev);
+        }
+
+        return classes.join(' ');
+    }
+
+    function getPagedPaginationLayoutMode(prevAlign, nextAlign, hasPrev, hasNext) {
+        var prev = normalizePagedButtonAlign(prevAlign, 'left');
+        var next = normalizePagedButtonAlign(nextAlign, 'right');
+
+        if (hasPrev && hasNext) {
+            if (prev === next) {
+                return 'group-' + prev;
+            }
+            if (prev === 'left' && next === 'right') {
+                return 'split-lr';
+            }
+            if (prev === 'right' && next === 'left') {
+                return 'split-rl';
+            }
+            return 'split-mixed';
+        }
+        if (hasNext && !hasPrev) {
+            return 'single-' + next;
+        }
+        if (hasPrev && !hasNext) {
+            return 'single-' + prev;
+        }
+        return 'empty';
+    }
+
+    function getPagedPaginationContainerStyle(prevAlign, nextAlign, hasPrev, hasNext) {
+        var mode = getPagedPaginationLayoutMode(prevAlign, nextAlign, hasPrev, hasNext);
+        var styles = ['width:100%', 'gap:1em', 'align-items:center', 'float:none', 'clear:both'];
+
+        switch (mode) {
+            case 'group-left':
+                styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:flex-start');
+                break;
+            case 'group-center':
+                styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:center');
+                break;
+            case 'group-right':
+                styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:flex-end');
+                break;
+            case 'split-lr':
+                styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:space-between');
+                break;
+            case 'split-rl':
+                styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:space-between', 'flex-direction:row-reverse');
+                break;
+            case 'split-mixed':
+                styles.push('display:grid !important', 'grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)');
+                break;
+            case 'single-left':
+                styles.push('display:flex !important', 'justify-content:flex-start');
+                break;
+            case 'single-center':
+                styles.push('display:flex !important', 'justify-content:center');
+                break;
+            case 'single-right':
+                styles.push('display:flex !important', 'justify-content:flex-end');
+                break;
+            default:
+                break;
+        }
+
+        return styles.join(';');
+    }
+
+    function getPagedPaginationLinkStyle(align) {
+        var normalized = normalizePagedButtonAlign(align, 'left');
+        var col = normalized === 'left' ? '1' : (normalized === 'center' ? '2' : '3');
+        var self = normalized === 'left' ? 'start' : (normalized === 'center' ? 'center' : 'end');
+        return 'grid-column:' + col + ';grid-row:1;justify-self:' + self + ';float:none !important;clear:none !important;margin:0 !important;';
+    }
+
+    function getPagedPaginationLayoutAttributes(prevAlign, nextAlign, hasPrev, hasNext) {
+        var prev = normalizePagedButtonAlign(prevAlign, 'left');
+        var next = normalizePagedButtonAlign(nextAlign, 'right');
+        var mode = getPagedPaginationLayoutMode(prev, next, hasPrev, hasNext);
+        var baseLinkStyle = 'float:none !important;clear:none !important;margin:0 !important;';
+
+        return {
+            className: getPagedPaginationAlignClasses(prev, next, hasPrev, hasNext),
+            containerStyle: getPagedPaginationContainerStyle(prev, next, hasPrev, hasNext),
+            prevStyle: mode === 'split-mixed' && hasPrev ? getPagedPaginationLinkStyle(prev) : baseLinkStyle,
+            nextStyle: mode === 'split-mixed' && hasNext ? getPagedPaginationLinkStyle(next) : baseLinkStyle,
+            prevData: prev,
+            nextData: next
+        };
     }
 
     function escapeHtml(text) {
@@ -239,9 +376,60 @@ jQuery(document).ready(function ($) {
         return momentFormat;
     }
 
+    function deriveShortenedStartMomentFormat(dateDetailsFormat, includeYear) {
+        var format = (dateDetailsFormat || '').trim() || 'F d, Y';
+        if (includeYear) {
+            if (format.indexOf('F') !== -1) {
+                return 'MMMM D, YYYY';
+            }
+            if (format.indexOf('M') !== -1) {
+                return 'MMM D, YYYY';
+            }
+            if (format.indexOf('m') !== -1) {
+                return 'MM/DD/YYYY';
+            }
+            return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '')) + ', YYYY';
+        }
+        if (format.indexOf('F') !== -1) {
+            return 'MMMM D';
+        }
+        if (format.indexOf('M') !== -1) {
+            return 'MMM D';
+        }
+        if (format.indexOf('m') !== -1) {
+            return 'M/D';
+        }
+        return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '') || 'M j');
+    }
+
+    function setPaginationLoading($btn, isLoading) {
+        var $pagination = $btn && $btn.length ? $btn.closest('.pagination-container') : $();
+        if (!$pagination.length && $btn && $btn.jquery) {
+            $pagination = $btn;
+        }
+        if (!$pagination.length || !$pagination.hasClass('pagination-container')) {
+            return;
+        }
+
+        var $events = $pagination.siblings('.events-main__container');
+        if (!$events.length) {
+            $events = $pagination.closest('.event_calendar_module__inner, .decm_event_display, [class*="event-display_"]').find('.events-main__container').first();
+        }
+
+        $pagination.toggleClass('dec-pagination-is-loading', !!isLoading);
+        $events.toggleClass('dec-events-is-loading', !!isLoading);
+    }
+
     function decm_get_event(button, page, per_page, hiddenF) {
 
         const e = button;
+
+        var $clicked = $(e);
+        var $paginationContainer = $clicked.closest('.pagination-container');
+        if ($paginationContainer.hasClass('dec-pagination-is-loading')) {
+            return;
+        }
+        setPaginationLoading($paginationContainer, true);
 
         var params = {
             'disable_title_link': '',
@@ -298,6 +486,8 @@ jQuery(document).ready(function ($) {
             'show_end_date_details': '',
             'date_detail_label': '',
             'date_details_format': '',
+            'shorten_multidate': 'on',
+            'start_date_format': '',
             'show_time_details': '',
             'details_time_label': '',
             'details_time_format': '',
@@ -345,11 +535,18 @@ jQuery(document).ready(function ($) {
             'load_more_text': 'Load More',
             'excerpt_length': '27',
             'show_excerpt': 'off',
+            'excerpt_content': 'show_excerpt',
             'show_pagination': 'off',
             'page': '',
             'per_page': '3',
             'layout': 'grid',
+            'layout_desktop': '',
+            'layout_tablet': '',
+            'layout_phone': '',
             'layout_type': '',
+            'layout_type_desktop': '',
+            'layout_type_tablet': '',
+            'layout_type_phone': '',
             'show_callout_box_starttime': '',
             'show_colon_label': '',
             'show_timezone': 'off',
@@ -412,7 +609,6 @@ jQuery(document).ready(function ($) {
             'feature_image_overlay_icon_color': '#fff',
             'feature_image_overlay_background': 'rgba(0,0,0,0.4)',
             'cover_feature_image_overlay_on': '',
-            'cover_image_overlay_color': 'rgba(0,0,0,0.4)',
         };
 
         // Loop through each key and get the value from the hidden input field
@@ -479,7 +675,9 @@ jQuery(document).ready(function ($) {
             // For initial load, use responsive events_count
             params['per_page'] = getResponsiveEventsCount(params);
         }
-        if (params.layout == 'grid' || params.layout == 'cover') {
+        if (window.decmEventDisplayResponsiveLayout) {
+            window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+        } else if (params.layout == 'grid' || params.layout == 'cover') {
             params.layout_type = '';
         }
         // console.log(params);
@@ -709,6 +907,11 @@ jQuery(document).ready(function ($) {
                 var events = response.data.events;
                 var container = thiscontainer;
 
+                if (window.decmEventDisplayResponsiveLayout) {
+                    window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+                    window.decmEventDisplayResponsiveLayout.updateContainerLayoutClasses(container, params.layout, params);
+                }
+
                 // Re-retrieve website link settings before rendering (CRITICAL for pagination)
                 ['website_link', 'website_link_target', 'custom_web_link'].forEach(function (fieldName) {
                     var retrievedValue = hiddenFieldsContainer.find('input.hidden-data-field[name="' + fieldName + '"]').val() || '';
@@ -748,7 +951,7 @@ jQuery(document).ready(function ($) {
                                 allEventHtml += '<h2 class="ecs-events-list-separator-month">' +
                                     '<span class="month-heading ecs-events-calendar-list__month-separator-text">' +
                                     escapeHtml(monthHeading) +
-                                    '</span></h2>';
+                                    '</span><span class="ecs-events-list-separator-month__line" aria-hidden="true"></span></h2>';
                             }
                         }
                         // Always skip marker rows so they never render as event cards.
@@ -820,8 +1023,24 @@ jQuery(document).ready(function ($) {
                     // -------------------------------
                     // Date Details (PHP 'F d, Y')
                     const momentFormatDetails = phpToMomentFormat(params.date_details_format || 'F d, Y');
-                    const formattedDate_startDate_Details = fmt(startM, momentFormatDetails) || (event.date || event.callout_start_date || '');
-                    const formattedDate_endDate_Details = fmt(endM, momentFormatDetails) || (event.callout_end_date || '');
+                    const shortenOn = params.shorten_multidate === 'on' || params.shorten_multidate === 'true';
+                    const isMultidayDetails = startM && endM && startM.isValid() && endM.isValid() && !startM.isSame(endM, 'day');
+                    let formattedDate_startDate_Details = fmt(startM, momentFormatDetails) || (event.date || event.callout_start_date || '');
+                    let formattedDate_endDate_Details = fmt(endM, momentFormatDetails) || (event.callout_end_date || '');
+                    if (shortenOn && isMultidayDetails) {
+                        if (params.start_date_format) {
+                            formattedDate_startDate_Details = fmt(startM, phpToMomentFormat(params.start_date_format));
+                        } else if (startM.year() === endM.year()) {
+                            formattedDate_startDate_Details = fmt(startM, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', false));
+                        } else {
+                            formattedDate_startDate_Details = fmt(startM, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', true));
+                        }
+                        if (startM.format('MMM YYYY') === endM.format('MMM YYYY')) {
+                            formattedDate_endDate_Details = fmt(endM, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'D, YYYY');
+                        } else {
+                            formattedDate_endDate_Details = fmt(endM, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'MMM D, YYYY');
+                        }
+                    }
 
                     // -------------------------------
                     // Time Details (PHP 'g:i a')
@@ -896,29 +1115,20 @@ jQuery(document).ready(function ($) {
 
                     const buttonAlign = getResponsiveButtonAlign(params);
                     const buttonAlignEnabledClass = (buttonAlign === 'on') ? 'button-align-enabled' : '';
-                    var coverBgStyle = '';
                     var coverOverlayOn = false;
                     var coverHasImageSrc = false;
                     if (params.layout === 'cover') {
                         coverOverlayOn = isCoverOverlayOn(params.cover_feature_image_overlay_on);
                         coverHasImageSrc = isFeatureImageOn(params.show_feature_image) && event.image &&
                             (event.image.match(/src=["']([^"']+)["']/) || event.image.match(/src=([^\s>]+)/));
-                        if (!coverHasImageSrc && !coverOverlayOn && params.cover_image_overlay_color) {
-                            coverBgStyle = ' style="background-color: ' + params.cover_image_overlay_color + '; background: ' + params.cover_image_overlay_color + ';"';
-                        }
                     }
                     eventHtml += '<div class="event-container ' + layoutType + ' cs-col-' + columns + ' ' + buttonAlignEnabledClass + '" ' +
                         'data-columns-desktop="' + columnsDesktop + '" ' +
                         'data-columns-tablet="' + columnsTablet + '" ' +
-                        'data-columns-phone="' + columnsPhone + '"' +
-                        coverBgStyle + '>';
+                        'data-columns-phone="' + columnsPhone + '">';
                     if (params.layout === 'cover') {
                         if (coverOverlayOn) {
-                            var coverOverlayStyle = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;';
-                            if (params.cover_image_overlay_color) {
-                                coverOverlayStyle = 'background:' + params.cover_image_overlay_color + '; ' + coverOverlayStyle;
-                            }
-                            eventHtml += '<div class="cover_overlayop" style="' + coverOverlayStyle + '"></div>';
+                            eventHtml += '<div class="cover_overlayop"></div>';
                         }
                         if (coverHasImageSrc) {
                             if ((event.image || '').indexOf('tribe-events-event-image') !== -1) {
@@ -1794,7 +2004,7 @@ jQuery(document).ready(function ($) {
                     if (params.show_excerpt === 'on') {
                         let t = '';
                         if (params.excerpt_content === 'show_desc' && event.post_description) {
-                            t = event.post_description;
+                            t = String(event.post_description).replace(/<[^>]*>/g, '');
                         } else if (event.post_excerpt) {
                             t = event.post_excerpt;
                         }
@@ -1944,10 +2154,21 @@ jQuery(document).ready(function ($) {
                     calculateEqualHeights(thiscontainer);
                 }, 200);
                 updatePagination(response.data.pagination, params, $(e).closest('.pagination-container'));
+                responsiveLayoutSyncInProgress = false;
+                if (responsiveLayoutSyncQueued) {
+                    responsiveLayoutSyncQueued = false;
+                    scheduleResponsiveLayoutSync(true);
+                }
                 // console.log(response.data.pagination);
             },
             error: function () {
+                responsiveLayoutSyncInProgress = false;
+                responsiveLayoutSyncQueued = false;
                 alert(__t("AJAX error occurred!"));
+            },
+            complete: function () {
+                // Use stored container — clicked button is replaced after updatePagination.
+                setPaginationLoading($paginationContainer, false);
             }
         });
     }
@@ -1955,6 +2176,12 @@ jQuery(document).ready(function ($) {
     $(document).on('click', '.prev, .next, .dec-numeric a, .load-more-btn', function (e) {
         e.preventDefault();
         const button = $(this);
+        if (button.closest('.pagination-container').hasClass('dec-pagination-is-loading')) {
+            return;
+        }
+        if (button.hasClass('current') || button.attr('aria-current') === 'page') {
+            return;
+        }
         const hiddenF = $(this).closest('.pagination-container').siblings('.events-main__container').find('.hidden_feild');
         var page = $(this).data('page');
         
@@ -1973,15 +2200,31 @@ jQuery(document).ready(function ($) {
         
         var paginationHtml = '';
         switch (paginationData.pagination_type) {
-            case 'paged':
+            case 'paged': {
+                const $hidden = findPagedPaginationHiddenFields($paginationContainer);
+                const prevIconChar = ($hidden.find('input[name="paged_prev_button_icon"]').val() || '').trim();
+                const prevIconFont = $hidden.find('input[name="paged_prev_button_icon_font"]').val() || 'ETmodules';
+                const nextIconChar = ($hidden.find('input[name="paged_next_button_icon"]').val() || '').trim();
+                const nextIconFont = $hidden.find('input[name="paged_next_button_icon_font"]').val() || 'ETmodules';
+                const prevIconClass = prevIconChar ? ' dec-paged-custom-icon dec-paged-inline-icon' : '';
+                const nextIconClass = nextIconChar ? ' dec-paged-custom-icon dec-paged-inline-icon' : '';
+                const prevIconSpan = buildPagedPaginationIconSpan(prevIconChar, prevIconFont, 'prev');
+                const nextIconSpan = buildPagedPaginationIconSpan(nextIconChar, nextIconFont, 'next');
+                const hasPrev = paginationData.current_page > 1;
+                const hasNext = paginationData.current_page < paginationData.total_pages;
+                const prevAlign = $hidden.find('input[name="paged_prev_button_align"]').val() || 'left';
+                const nextAlign = $hidden.find('input[name="paged_next_button_align"]').val() || 'right';
+                const pagedLayout = getPagedPaginationLayoutAttributes(prevAlign, nextAlign, hasPrev, hasNext);
+
                 paginationHtml = `
-                <div class="dec-pagination dec-prev-next">
-                    ${paginationData.current_page > 1 ?
-                        `<a href="#" class="prev ecs-page_alignment_left" data-page="${paginationData.current_page - 1}">${__t(params.prv_link_btn)}</a>` : ''}
-                    ${paginationData.current_page < paginationData.total_pages ?
-                        `<a href="#" class="next ecs-page_alignment_right" data-page="${paginationData.current_page + 1}">${__t(params.next_link_btn)}</a>` : ''}
+                <div class="dec-pagination dec-prev-next ${pagedLayout.className}" style="${pagedLayout.containerStyle}" data-paged-prev-align="${pagedLayout.prevData}" data-paged-next-align="${pagedLayout.nextData}">
+                    ${hasPrev ?
+                        `<a href="#" class="prev${prevIconClass}" style="${pagedLayout.prevStyle}" data-page="${paginationData.current_page - 1}">${prevIconSpan}${__t(params.prv_link_btn)}</a>` : ''}
+                    ${hasNext ?
+                        `<a href="#" class="next${nextIconClass}" style="${pagedLayout.nextStyle}" data-page="${paginationData.current_page + 1}">${__t(params.next_link_btn)}${nextIconSpan}</a>` : ''}
                 </div>`;
                 break;
+            }
 
             case 'numeric_pagination': {
                 const total = Number(paginationData.total_pages) || 1;
@@ -2079,16 +2322,96 @@ jQuery(document).ready(function ($) {
 
         $paginationContainer.find('.dec-pagination').remove();
         $paginationContainer.html(paginationHtml);
+        if (window.decmEventDisplayResponsiveLayout && typeof window.decmEventDisplayResponsiveLayout.applyPagedPaginationLayout === 'function') {
+            window.decmEventDisplayResponsiveLayout.applyPagedPaginationLayout($paginationContainer.find('.dec-pagination.dec-prev-next'));
+        }
 
     }
 
-    // Global resize listener for equal heights calculation
-    var resizeTimeout;
+    // Global listeners for responsive layout switching (resize + matchMedia for DevTools).
+    var responsiveLayoutResizeTimeout;
+    var responsiveLayoutSyncInProgress = false;
+    var responsiveLayoutSyncQueued = false;
+
+    function syncResponsiveEventFeedLayouts(forceRerender) {
+        if (!window.decmEventDisplayResponsiveLayout) {
+            return;
+        }
+
+        if (responsiveLayoutSyncInProgress) {
+            responsiveLayoutSyncQueued = true;
+            return;
+        }
+
+        var responsive = window.decmEventDisplayResponsiveLayout;
+        var breakpoint = responsive.getScreenBreakpoint();
+        var needsRerender = false;
+
+        $('.decm_event_display, .event-display').each(function () {
+            var $module = $(this);
+            var $container = $module.find('.events-main__container').first();
+            if (!$container.length) {
+                return;
+            }
+
+            var params = responsive.readLayoutParamsFromContainer
+                ? responsive.readLayoutParamsFromContainer($container)
+                : {};
+
+            if (!responsive.readLayoutParamsFromContainer) {
+                $container.find('input.hidden-data-field').each(function () {
+                    var $field = $(this);
+                    params[$field.attr('name')] = $field.val() || '';
+                });
+            }
+
+            responsive.applyResponsiveLayoutParams(params, breakpoint);
+            var expectedLayout = params.layout;
+            var currentLayout = responsive.getLayoutFromContainer($container);
+
+            if (currentLayout !== expectedLayout || $container.attr('data-active-layout') !== expectedLayout) {
+                var $paginationContainer = $module.find('.pagination-container').first();
+                if ($paginationContainer.length) {
+                    responsiveLayoutSyncInProgress = true;
+                    needsRerender = true;
+                    var hiddenF = $container.find('.hidden_feild');
+                    decm_get_event($paginationContainer, 1, '', hiddenF);
+                }
+            }
+        });
+
+        if (!needsRerender) {
+            responsiveLayoutSyncQueued = false;
+        }
+    }
+
+    function scheduleResponsiveLayoutSync(forceRerender) {
+        clearTimeout(responsiveLayoutResizeTimeout);
+        responsiveLayoutResizeTimeout = setTimeout(function () {
+            syncResponsiveEventFeedLayouts(forceRerender);
+        }, 150);
+    }
+
+    syncResponsiveEventFeedLayouts(false);
+
+    if (window.decmEventDisplayResponsiveLayout && window.decmEventDisplayResponsiveLayout.onBreakpointChange) {
+        window.decmEventDisplayResponsiveLayout.onBreakpointChange(function () {
+            scheduleResponsiveLayoutSync(true);
+        });
+    }
+
+    $(window).on('resize orientationchange', function() {
+        scheduleResponsiveLayoutSync(true);
+    });
+
+    var equalHeightsResizeTimeout;
     $(window).on('resize', function() {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(function() {
+        clearTimeout(equalHeightsResizeTimeout);
+        equalHeightsResizeTimeout = setTimeout(function() {
             $('.events-main__container.button-align-enabled').each(function() {
-                calculateEqualHeights($(this));
+                if (typeof calculateEqualHeights === 'function') {
+                    calculateEqualHeights($(this));
+                }
             });
         }, 150);
     });
