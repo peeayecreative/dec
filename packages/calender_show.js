@@ -1287,7 +1287,7 @@ document.addEventListener("DOMContentLoaded", function () {
         "&postal_comma=" + myAjax.show_postal_comma +
         "&country_comma=" + myAjax.show_country_comma +
         "&show_postal_code_before_locality=" + myAjax.show_postal_code_before_locality +
-        "&organizer=on" +
+        "&organizer=" + (myAjax.show_organizer || '') +
         "&categories=" + includedCategoriesString +
         "&show_tooltip=" + myAjax.show_tooltip +
         "&show_tooltip_tablet=" + (myAjax.show_tooltip_tablet || '') +
@@ -1297,6 +1297,8 @@ document.addEventListener("DOMContentLoaded", function () {
         "&show_image_phone=" +
         "&show_icon_label=" + myAjax.show_icon_label +
         "&stack_label_icon=" + myAjax.stack_label_icon +
+        "&stack_event_d=" + (myAjax.stack_event_d || 'on') +
+        "&show_preposition_dividr=" + (myAjax.show_preposition_dividr || 'off') +
         "&show_colon=" + myAjax.show_colon +
         "&show_excerpt=" + myAjax.show_excerpt +
         "&show_price=" + myAjax.show_price +
@@ -1589,5 +1591,3 @@ document.addEventListener("DOMContentLoaded", function () {
 function getMonthFromString(mon, year) {
   return new Date(Date.parse(mon + " 1, " + year)).getMonth();
 }
-
-
