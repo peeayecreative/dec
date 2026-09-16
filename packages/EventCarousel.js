@@ -2,11 +2,36 @@
 
 (function ($) {
 
+    function scheduleOwlRefresh($carousel) {
+        var refresh = function () {
+            if ($carousel.data('owl.carousel')) {
+                $carousel.trigger('refresh.owl.carousel');
+            }
+        };
+
+        if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(function () {
+                refresh();
+                window.requestAnimationFrame(refresh);
+            });
+        } else {
+            window.setTimeout(refresh, 0);
+        }
+
+        $(window).on('load.decmEventCarousel', refresh);
+        window.setTimeout(refresh, 100);
+        window.setTimeout(refresh, 400);
+    }
+
     $(document).ready(function () {
         $('.owl-carousel').each(function () {
-            var items = $(this).attr('data');
-            var itemsTablet = $(this).attr('data-items-tablet');
-            var itemsPhone = $(this).attr('data-items-phone');
+            if ($(this).data('owl.carousel')) {
+                return;
+            }
+
+            var items = parseInt($(this).attr('data'), 10);
+            var itemsTablet = parseInt($(this).attr('data-items-tablet'), 10);
+            var itemsPhone = parseInt($(this).attr('data-items-phone'), 10);
             var loopStatus = $(this).attr('loopstatus') == "1" ? true : false;
             var show_arrows = $(this).attr('show_arrows') == "on" ? true : false;
             var show_arrows_phone = "";
@@ -48,14 +73,17 @@
             var mousedrag = $(this).attr('data-mouse-drag') == "on" ? true : false;
             var touchdrag = $(this).attr('data-touch-drag') == "on" ? true : false;
             var autowidth = $(this).attr('data-auto-width') == "on" ? true : false;
-            var prev_link = $(this).attr('prev_link');
-            var next_link = $(this).attr('next_link');
+            var prev_link = $(this).attr('prev_link') || 'Previous';
+            var next_link = $(this).attr('next_link') || 'Next';
             var columns_type = $(this).attr('columns_type');
+            var layoutType = $(this).attr('data-layout') || '';
+            if (layoutType !== 'list') {
             if (columns_type == "1" && ($(this).attr('image_align') == "topimage_bottomdetail" || $(this).attr('image_align') == "leftimage_rightdetail" || $(this).attr('image_align') == "rightimage_leftdetail")) {
                 items = 1;
             }
             if (columns_type == "2" && ($(this).attr('image_align') == "topimage_bottomdetail" || $(this).attr('image_align') == "leftimage_rightdetail" || $(this).attr('image_align') == "rightimage_leftdetail")) {
                 items = 2;
+            }
             }
 
             var rewind = $(this).attr('data-rewind') == "on" ? true : false;
@@ -63,24 +91,59 @@
             var slideby = $(this).attr('data-slide-by');
             var autoplay_speed = $(this).attr('data-autoplaytimeout');
             var lazyload = $(this).attr('data-lazy-load') == "on" ? true : false;
-            if (typeof itemsTablet == "undefined" || itemsTablet == '') {
+            if (isNaN(items) || items < 1) {
+                items = 3;
+            }
+            if (isNaN(itemsTablet) || itemsTablet < 1) {
                 itemsTablet = 2;
             }
-            if (typeof itemsPhone == "undefined" || itemsPhone == '') {
+            if (isNaN(itemsPhone) || itemsPhone < 1) {
                 itemsPhone = 1;
             }
 
+          var buttonAlign = $(this).attr('data-button-align') === 'true';
+          var itemsCount = parseInt(items, 10) || 1;
+          var useAutoHeight = !buttonAlign && itemsCount <= 1;
+          var equalizeCarouselCards = function($carousel) {
+                var $cards = $carousel.find('.owl-item:not(.cloned) .event-container.button-align-enabled, .owl-item:not(.cloned) > .ecs-event-posts.event-container.button-align-enabled');
+                if (!$cards.length) {
+                    return;
+                }
+                $cards.css({ height: 'auto', minHeight: '' });
+                var rows = {};
+                $cards.each(function() {
+                    var $item = $(this).closest('.owl-item');
+                    var top = Math.round($item.position().top || 0);
+                    if (!rows[top]) {
+                        rows[top] = $();
+                    }
+                    rows[top] = rows[top].add($(this));
+                });
+                $.each(rows, function(_, $group) {
+                    var maxHeight = 0;
+                    $group.each(function() {
+                        maxHeight = Math.max(maxHeight, $(this).outerHeight());
+                    });
+                    if (maxHeight > 0) {
+                        $group.css({ minHeight: maxHeight + 'px', height: maxHeight + 'px' });
+                    }
+                });
+            };
 
             $(this).owlCarousel({
                 autoplay: autoplay,
                 autoplayHoverPause: hoverpause,
                 items: items,
-                // margin:20,
+                margin: 0,
                 //transitionStyle : "fade",
                 loop: loopStatus,
-                merge: true,
-                autoHeight: true,
+                merge: false,
+                autoHeight: useAutoHeight,
                 nav: show_arrows,
+                navText: [
+                    '<span class="screen-reader-text">' + prev_link + '</span>',
+                    '<span class="screen-reader-text">' + next_link + '</span>'
+                ],
                 dots: show_control,
                 mouseDrag: mousedrag,
                 touchDrag: touchdrag,
@@ -88,17 +151,18 @@
                 lazyLoad: true,
                 responsive: {
                     980: {
-                        mergeFit: true,
                         items: items,
+                        margin: 0,
                         nav: show_arrows,
                         dots: show_control,
                         mouseDrag: mousedrag,
                         touchDrag: touchdrag,
-                        autoHeight: true,
+                        autoHeight: useAutoHeight,
 
                     },
                     767: {
                         items: itemsTablet,
+                        margin: 0,
                         nav: show_arrows_tablet,
                         dots: show_control,
                         autoplay: autoplay,
@@ -108,10 +172,17 @@
                     0: {
                         nav: show_arrows_phone,
                         items: itemsPhone,
+                        margin: 0,
                         autoplay: autoplay,
                     }
                 }
+            }).on('initialized.owl.carousel refreshed.owl.carousel resized.owl.carousel changed.owl.carousel', function() {
+                if (buttonAlign) {
+                    equalizeCarouselCards($(this));
+                }
             });
+
+            scheduleOwlRefresh($(this));
 
         });
     });
