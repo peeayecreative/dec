@@ -126,11 +126,9 @@ function decmNormalizeListViewOption(option) {
   return 'listWeek';
 }
 
-function decmClampEventFetchRange(fetchInfo, myAjax) {
-  var startStr = fetchInfo && fetchInfo.startStr ? String(fetchInfo.startStr).split('T')[0] : '';
-  var endStr = fetchInfo && fetchInfo.endStr ? String(fetchInfo.endStr).split('T')[0] : '';
+function decmBuildLimitEventWindow(myAjax) {
   if (!myAjax || myAjax.limit_event !== 'on') {
-    return { start: startStr, end: endStr };
+    return null;
   }
   var pastMonths = parseInt(myAjax.event_start_date, 10);
   var futureMonths = parseInt(myAjax.event_end_date, 10);
@@ -140,12 +138,272 @@ function decmClampEventFetchRange(fetchInfo, myAjax) {
   if (isNaN(futureMonths)) {
     futureMonths = 6;
   }
+  pastMonths = Math.max(0, pastMonths);
+  futureMonths = Math.max(0, futureMonths);
   var windowStart = new Date();
   windowStart.setMonth(windowStart.getMonth() - pastMonths, 1);
   windowStart.setHours(0, 0, 0, 0);
+  // Exclusive end: first day of the month after the last allowed month.
   var windowEnd = new Date();
-  windowEnd.setMonth(windowEnd.getMonth() + futureMonths + 1, 0);
-  windowEnd.setHours(23, 59, 59, 999);
+  windowEnd.setMonth(windowEnd.getMonth() + futureMonths + 1, 1);
+  windowEnd.setHours(0, 0, 0, 0);
+  return { start: windowStart, end: windowEnd };
+}
+
+function decmLocalYearMonth(date) {
+  return date.getFullYear() * 12 + date.getMonth();
+}
+
+function decmLimitWindowLastMonth(limitWindow) {
+  return new Date(limitWindow.end.getTime() - 1);
+}
+
+function decmNormalizeFcLocale(lang) {
+  var code = String(lang || '').trim().replace(/_/g, '-');
+  if (!code) {
+    return 'en';
+  }
+  return code;
+}
+
+function decmGetFcLocalesArray() {
+  if (typeof window !== 'undefined' && Array.isArray(window.FullCalendarLocalesAll) && window.FullCalendarLocalesAll.length) {
+    return window.FullCalendarLocalesAll;
+  }
+  if (typeof window !== 'undefined' && window.FullCalendarLocales && typeof window.FullCalendarLocales === 'object') {
+    return Object.keys(window.FullCalendarLocales).map(function (key) {
+      return window.FullCalendarLocales[key];
+    }).filter(function (locale) {
+      return locale && typeof locale === 'object';
+    });
+  }
+  return [];
+}
+
+function decmMatchFcLocalePack(lang) {
+  var code = String(lang || 'en').toLowerCase();
+  var short = code.split('-')[0];
+  var packs = decmGetFcLocalesArray();
+  var i;
+  var pack;
+  for (i = 0; i < packs.length; i++) {
+    pack = packs[i];
+    if (pack && (String(pack.code).toLowerCase() === code || String(pack.code).toLowerCase() === short)) {
+      return pack;
+    }
+  }
+  return null;
+}
+
+function decmHoldFcLocaleGlobals() {
+  var held = {
+    all: window.FullCalendarLocalesAll,
+    map: window.FullCalendarLocales
+  };
+  window.FullCalendarLocalesAll = [];
+  window.FullCalendarLocales = {};
+  return held;
+}
+
+function decmRestoreFcLocaleGlobals(held) {
+  if (!held) {
+    return;
+  }
+  window.FullCalendarLocalesAll = held.all;
+  window.FullCalendarLocales = held.map;
+}
+
+function decmFormatMonthTitle(date, lang) {
+  try {
+    return new Intl.DateTimeFormat(lang || 'en', { month: 'long', year: 'numeric' }).format(date);
+  } catch (e) {
+    return date.getFullYear() + '-' + decmPad2(date.getMonth() + 1);
+  }
+}
+
+function decmApplyLocalizedCalendarTitle($mount, date, lang, viewType) {
+  if (!$mount || !$mount.length || !date) {
+    return;
+  }
+  var title;
+  if (viewType === 'listYear') {
+    title = String(date.getFullYear());
+  } else {
+    title = decmFormatMonthTitle(date, lang);
+  }
+  $mount.find('.fc-toolbar h2').text(title);
+}
+
+function decmWeekStartFromSetting(raw) {
+  if (raw === '' || raw === undefined || raw === null) {
+    return 0;
+  }
+  if (!isNaN(raw) && String(raw).trim() !== '') {
+    var parsed = parseInt(raw, 10);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 6) {
+      return parsed;
+    }
+  }
+  var name = String(raw).trim().toLowerCase();
+  var named = {
+    sunday: 0, zondag: 0, sonntag: 0, dimanche: 0,
+    monday: 1, maandag: 1, montag: 1, lundi: 1,
+    tuesday: 2, dinsdag: 2, dienstag: 2, mardi: 2,
+    wednesday: 3, woensdag: 3, mittwoch: 3, mercredi: 3,
+    thursday: 4, donderdag: 4, donnerstag: 4, jeudi: 4,
+    friday: 5, vrijdag: 5, freitag: 5, vendredi: 5,
+    saturday: 6, zaterdag: 6, samstag: 6, samedi: 6
+  };
+  if (Object.prototype.hasOwnProperty.call(named, name)) {
+    return named[name];
+  }
+  return 0;
+}
+
+function decmIsMonthLikeView(viewType) {
+  return viewType === 'dayGridMonth' || viewType === 'listMonth' || viewType === 'listYear';
+}
+
+function decmDateToYearMonthDate(d) {
+  if (!d || isNaN(d.getTime())) {
+    d = new Date();
+  }
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function decmAddCalendarMonths(date, delta) {
+  var y = date.getFullYear();
+  var m = date.getMonth() + delta;
+  y += Math.floor(m / 12);
+  m = ((m % 12) + 12) % 12;
+  return new Date(y, m, 1);
+}
+
+function decmFcUtcMonthInput(date) {
+  var d = decmDateToYearMonthDate(date);
+  return [d.getFullYear(), d.getMonth(), 1];
+}
+
+function decmVisibleMonthDate(calendar) {
+  var d = null;
+  try {
+    if (calendar && calendar.view && calendar.view.currentStart) {
+      d = calendar.view.currentStart;
+    }
+  } catch (e) {}
+  if (!d || isNaN(d.getTime())) {
+    try {
+      d = calendar.getDate();
+    } catch (e2) {
+      d = new Date();
+    }
+  }
+  if (!d || isNaN(d.getTime())) {
+    d = new Date();
+  }
+  if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), 1);
+  }
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function decmGetCalendarLocalDate(calendar) {
+  return decmVisibleMonthDate(calendar);
+}
+
+function decmFcUtcDateInput(date) {
+  if (!date || isNaN(date.getTime())) {
+    date = new Date();
+  }
+  return [date.getFullYear(), date.getMonth(), date.getDate()];
+}
+
+function decmShiftViewDate(date, viewType, delta) {
+  var y = date.getFullYear();
+  var m = date.getMonth();
+  var d = date.getDate();
+  if (viewType === 'listYear') {
+    return new Date(y + delta, 0, 1);
+  }
+  if (viewType === 'dayGridMonth' || viewType === 'listMonth') {
+    return decmAddCalendarMonths(new Date(y, m, 1), delta);
+  }
+  if (viewType === 'timeGridWeek' || viewType === 'listWeek') {
+    return new Date(y, m, d + (delta * 7));
+  }
+  return new Date(y, m, d + delta);
+}
+
+function decmGotoCalendarDate(calendar, date, viewType) {
+  var input;
+  if (viewType === 'dayGridMonth' || viewType === 'listMonth' || viewType === 'listYear' || !viewType) {
+    input = decmFcUtcMonthInput(date);
+  } else {
+    input = decmFcUtcDateInput(date);
+  }
+  try {
+    calendar.gotoDate(input);
+  } catch (e) {
+    try {
+      calendar.gotoDate(decmFormatLocalYmd(decmDateToYearMonthDate(date)));
+    } catch (e2) {}
+  }
+}
+
+function decmClampDateToLimitWindow(date, limitWindow) {
+  if (!limitWindow || !date) {
+    return date;
+  }
+  var ym = decmLocalYearMonth(date);
+  var startYm = decmLocalYearMonth(limitWindow.start);
+  var endYm = decmLocalYearMonth(decmLimitWindowLastMonth(limitWindow));
+  if (ym < startYm) {
+    return new Date(limitWindow.start.getFullYear(), limitWindow.start.getMonth(), 1);
+  }
+  if (ym > endYm) {
+    var last = decmLimitWindowLastMonth(limitWindow);
+    return new Date(last.getFullYear(), last.getMonth(), 1);
+  }
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function decmSyncLimitEventNav($mount, currentMonth, limitWindow) {
+  if (!$mount || !$mount.length) {
+    return;
+  }
+  var $prev = $mount.find('.fc-prev-button, .fc-decmPrev-button');
+  var $next = $mount.find('.fc-next-button, .fc-decmNext-button');
+  $prev.prop('disabled', false).css('pointer-events', 'auto');
+  $next.prop('disabled', false).css('pointer-events', 'auto');
+  if (!limitWindow || !currentMonth) {
+    $prev.css({ opacity: '', cursor: '' });
+    $next.css({ opacity: '', cursor: '' });
+    return;
+  }
+  var ym = decmLocalYearMonth(currentMonth);
+  var canPrev = ym > decmLocalYearMonth(limitWindow.start);
+  var canNext = ym < decmLocalYearMonth(decmLimitWindowLastMonth(limitWindow));
+  $prev.css({
+    opacity: canPrev ? '' : '0.45',
+    cursor: canPrev ? '' : 'default',
+    pointerEvents: 'auto'
+  });
+  $next.css({
+    opacity: canNext ? '' : '0.45',
+    cursor: canNext ? '' : 'default',
+    pointerEvents: 'auto'
+  });
+}
+
+function decmClampEventFetchRange(fetchInfo, myAjax) {
+  var startStr = fetchInfo && fetchInfo.startStr ? String(fetchInfo.startStr).split('T')[0] : '';
+  var endStr = fetchInfo && fetchInfo.endStr ? String(fetchInfo.endStr).split('T')[0] : '';
+  var limitWindow = decmBuildLimitEventWindow(myAjax);
+  if (!limitWindow) {
+    return { start: startStr, end: endStr };
+  }
+  var windowStart = limitWindow.start;
+  var windowEnd = new Date(limitWindow.end.getTime() - 1);
   var viewStart = fetchInfo && fetchInfo.start ? new Date(fetchInfo.start) : windowStart;
   var viewEnd = fetchInfo && fetchInfo.end ? new Date(fetchInfo.end) : windowEnd;
   var clampedStart = viewStart < windowStart ? windowStart : viewStart;
@@ -555,40 +813,18 @@ function decmApplyDaysOfWeekDesign($calendarMount, myAjax) {
   var eventBg = myAjax.events_background_color || '';
   var eventFg = myAjax.events_font_color || '';
   if (eventBg || eventFg) {
-    var cssVars = {};
-    if (eventBg) {
-      cssVars['--fc-event-bg-color'] = eventBg;
-      cssVars['--fc-list-event-hover-bg-color'] = eventBg;
-    }
-    if (eventFg) {
-      cssVars['--fc-event-text-color'] = eventFg;
-    }
-    $calendarMount.css(cssVars);
-
-    if (eventBg) {
-      decmSetCssImportant($calendarMount.find('.fc-list-item td, .fc-list-event td, .fc-list-item:hover td, .fc-list-event:hover td'), {
-        'background-color': eventBg,
-        background: eventBg,
-        border: 'none',
-        'border-color': eventBg,
-        color: eventFg || '#ffffff',
-        padding: '8px 14px'
-      });
-      decmSetCssImportant($calendarMount.find('.fc-list-item-marker, .fc-list-item .fc-event-dot, .fc-event-dot, .fc-list-event-dot'), {
-        display: 'none',
-        width: '0',
-        height: '0',
-        padding: '0',
-        border: 'none',
-        visibility: 'hidden'
-      });
-    }
-    if (eventFg) {
-      decmSetCssImportant($calendarMount.find('.fc-list-item-title, .fc-list-item-title a, .fc-list-item-time, .fc-list-event-title, .fc-list-event-time'), {
-        color: eventFg,
-        'text-align': 'left'
-      });
-    }
+    var $fcColorTargets = $calendarMount.add($calendarMount.find('.fc'));
+    $fcColorTargets.each(function () {
+      if (eventBg) {
+        this.style.setProperty('--fc-event-bg-color', eventBg, 'important');
+        this.style.setProperty('--fc-event-border-color', eventBg, 'important');
+        this.style.setProperty('--decm-list-event-row-bg', eventBg, 'important');
+        this.style.setProperty('--decm-list-event-row-hover-bg', eventBg, 'important');
+      }
+      if (eventFg) {
+        this.style.setProperty('--fc-event-text-color', eventFg, 'important');
+      }
+    });
   }
 
   if (myAjax.nav_background_color || myAjax.nav_font_color) {
@@ -1438,7 +1674,10 @@ document.addEventListener("DOMContentLoaded", function () {
     '.decm_divi_event_calendar, [class*="decm_divi_event_calendar"], [class*="et_pb_event_calendar"]'
   );
   var eventNs = '.decmCal_' + decmSanitizeEventNs(calendarMountEl.id);
-  var language = document.getElementsByTagName("html")[0].getAttribute("lang");
+  var language = decmNormalizeFcLocale(document.getElementsByTagName("html")[0].getAttribute("lang"));
+  var uiLocalePack = decmMatchFcLocalePack(language);
+  var uiButtonText = uiLocalePack && uiLocalePack.buttonText ? uiLocalePack.buttonText : null;
+  var uiAllDayText = uiLocalePack && uiLocalePack.allDayText ? uiLocalePack.allDayText : 'All Day Event';
 
   let number_event_day = 2;
   if (myAjax.number_event_day === "default") {
@@ -1513,15 +1752,12 @@ document.addEventListener("DOMContentLoaded", function () {
     calendarView = 'dayGridMonth';
   }
   
-  var date1 = new Date();
-  var date2 = new Date();
-  var limitEventStartMonth = null;
-  var limitEventEndMonth = null;
-  if (myAjax.limit_event == "on") {
-    var get_end_month = parseInt(myAjax.event_end_date) + 1;
-    var get_start_month = parseInt(myAjax.event_start_date);
-    limitEventEndMonth = new Date(date1.setMonth(date1.getMonth() + parseInt(get_end_month), 0));
-    limitEventStartMonth = new Date(date2.setMonth(date2.getMonth() - parseInt(get_start_month), 1));
+  var limitEventWindow = decmBuildLimitEventWindow(myAjax);
+  var decmLimitClampBusy = false;
+  var decmNavMonth = new Date();
+  decmNavMonth = new Date(decmNavMonth.getFullYear(), decmNavMonth.getMonth(), 1);
+  if (limitEventWindow) {
+    decmNavMonth = decmClampDateToLimitWindow(decmNavMonth, limitEventWindow);
   }
   // Tablet views - use tablet values if set, otherwise fall back to desktop values
   // If tablet value is explicitly 'off', don't show even if desktop is 'on'
@@ -1688,19 +1924,7 @@ document.addEventListener("DOMContentLoaded", function () {
       calendarViewPhone += ',';
     }
   }
-  // D5 stores numeric value "0"-"6"; D4 stored day name strings — handle both formats.
-  var week_start_on = 0;
-  if (myAjax.week_start_on !== "" && myAjax.week_start_on !== undefined) {
-    var _wso = myAjax.week_start_on;
-    if (!isNaN(_wso)) {
-      week_start_on = parseInt(_wso, 10);
-    } else {
-      if (_wso == "Sunday") { week_start_on = 0; } else if (_wso == "Monday") { week_start_on = 1; } else if (_wso == "Tuesday") { week_start_on = 2; } else if (_wso == "Wednesday") { week_start_on = 3; } else if (_wso == "Thursday") { week_start_on = 4; } else if (_wso == "Friday") { week_start_on = 5; } else if (_wso == "Saturday") { week_start_on = 6; }
-    }
-  }
-  if (isNaN(week_start_on) || week_start_on < 0 || week_start_on > 6) {
-    week_start_on = 0;
-  }
+  var week_start_on = decmWeekStartFromSetting(myAjax.week_start_on);
   var hiddenWeekdays = decmNormalizeHiddenWeekdays(myAjax.hidden_day);
   // Remove trailing commas and ensure at least one view for each
   calendarView = calendarView.replace(/,$/, '');
@@ -1762,14 +1986,17 @@ document.addEventListener("DOMContentLoaded", function () {
     myAjax.end_point
   );
 
-  var calendar = new FullCalendar.Calendar(calendarEl, {
+  var calendar;
+  var decmHeaderLeft = 'prev,next today';
+
+  calendar = new FullCalendar.Calendar(calendarEl, {
     minTime: hiddenSlotTimes.slotMinTime,
     maxTime: hiddenSlotTimes.slotMaxTime,
     scrollTime: hiddenSlotTimes.slotMinTime,
     eventOrder: myAjax.calendar_eventorder,
     showNonCurrentDates: myAjax.hide_pre_nxt_event === 'on' ? false : true,
     displayEventTime: false,
-    allDayText: 'All Day Event',
+    allDayText: uiAllDayText || 'All Day Event',
     // eventLimit: 2,
     plugins: ['dayGrid', 'timeGrid', 'list'],
     // selectable: true,
@@ -1780,20 +2007,16 @@ document.addEventListener("DOMContentLoaded", function () {
     // selectable: true,
     // navLinks: true,
     header: {
-      left: 'prev,next today',
+      left: decmHeaderLeft,
       center: 'title',
       right: initialViewButtons,
-
     },
 
     hiddenDays: hiddenWeekdays,
 
     firstDay: week_start_on,
-    locales: language,
-    // validRange: {
-    //   start: hide_past_event,
-    //   end: "",
-    // },
+    locale: language,
+    locales: decmGetFcLocalesArray(),
     eventLimit: number_event_day,
     eventLimitClick: 'popover',
     eventLimitText: function (n) {
@@ -1858,6 +2081,18 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       decmFixMoreLinkCounts(calendar, $calendarMount, number_event_day);
       decmApplyListViewHiddenDays($calendarMount, hiddenWeekdays);
+      if (limitEventWindow && !decmLimitClampBusy && info.view && decmIsMonthLikeView(info.view.type)) {
+        var visible = decmVisibleMonthDate(calendar);
+        var clamped = decmClampDateToLimitWindow(visible, limitEventWindow);
+        if (decmLocalYearMonth(clamped) !== decmLocalYearMonth(visible)) {
+          decmLimitClampBusy = true;
+          decmGotoCalendarDate(calendar, clamped, info.view.type);
+          decmLimitClampBusy = false;
+          visible = clamped;
+        }
+        decmNavMonth = visible;
+        decmSyncLimitEventNav($calendarMount, visible, limitEventWindow);
+      }
     },
 
     eventRender: function (info) {
@@ -2224,16 +2459,77 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   calendar.render();
+  if (limitEventWindow) {
+    decmNavMonth = decmVisibleMonthDate(calendar);
+    decmSyncLimitEventNav($calendarMount, decmNavMonth, limitEventWindow);
+    calendarMountEl.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest
+        ? e.target.closest('button.fc-prev-button, button.fc-next-button')
+        : null;
+      if (!btn || !calendar.view || !decmIsMonthLikeView(calendar.view.type)) {
+        return;
+      }
+      var before = decmVisibleMonthDate(calendar);
+      var viewType = calendar.view.type;
+      var isPrev = btn.classList.contains('fc-prev-button');
+      var beforeYm = decmLocalYearMonth(before);
+      var startYm = decmLocalYearMonth(limitEventWindow.start);
+      var endYm = decmLocalYearMonth(decmLimitWindowLastMonth(limitEventWindow));
+      if ((isPrev && beforeYm <= startYm) || (!isPrev && beforeYm >= endYm)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+          e.stopImmediatePropagation();
+        }
+        decmSyncLimitEventNav($calendarMount, before, limitEventWindow);
+        return;
+      }
+      window.setTimeout(function () {
+        var after = decmVisibleMonthDate(calendar);
+        var afterYm = decmLocalYearMonth(after);
+        var clamped = decmClampDateToLimitWindow(after, limitEventWindow);
+        if (afterYm !== beforeYm) {
+          if (afterYm !== decmLocalYearMonth(clamped)) {
+            decmGotoCalendarDate(calendar, clamped, viewType);
+            after = clamped;
+          }
+          decmNavMonth = after;
+          decmSyncLimitEventNav($calendarMount, after, limitEventWindow);
+          return;
+        }
+        var target = viewType === 'listYear'
+          ? new Date(before.getFullYear() + (isPrev ? -1 : 1), 0, 1)
+          : decmAddCalendarMonths(before, isPrev ? -1 : 1);
+        clamped = decmClampDateToLimitWindow(target, limitEventWindow);
+        if (decmLocalYearMonth(clamped) === beforeYm) {
+          decmSyncLimitEventNav($calendarMount, before, limitEventWindow);
+          return;
+        }
+        decmNavMonth = clamped;
+        decmGotoCalendarDate(calendar, clamped, viewType);
+        decmSyncLimitEventNav($calendarMount, clamped, limitEventWindow);
+      }, 0);
+    }, true);
+  }
   if (calendarEventsFetchActive) {
     decmShowCalendarLoading($calendarMount);
   }
-  calendar.setOption('locale', language);
+  if (limitEventWindow) {
+    decmSyncLimitEventNav($calendarMount, decmNavMonth, limitEventWindow);
+  }
   scheduleHiddenTimeRangeApply(calendar, myAjax, $calendarMount);
   decmApplyResponsiveToolbar($calendarMount, $moduleRoot);
   decmApplyDaysOfWeekDesign($calendarMount, myAjax);
 
   $calendarMount.off('click' + eventNs);
-  $calendarMount.on('click' + eventNs, 'button.fc-next-button, button.fc-prev-button, button.fc-today-button, button.fc-dayGridMonth-button, button.fc-timeGridWeek-button, button.fc-timeGridDay-button, button.fc-listWeek-button, button.fc-listMonth-button, button.fc-listYear-button', function () {
+  $calendarMount.on('click' + eventNs, 'button.fc-next-button, button.fc-prev-button, button.fc-decmNext-button, button.fc-decmPrev-button, button.fc-today-button, button.fc-dayGridMonth-button, button.fc-timeGridWeek-button, button.fc-timeGridDay-button, button.fc-listWeek-button, button.fc-listMonth-button, button.fc-listYear-button', function () {
+    if (jQuery(this).hasClass('fc-today-button') && calendar.view && decmIsMonthLikeView(calendar.view.type)) {
+      var now = new Date();
+      decmNavMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      if (limitEventWindow) {
+        decmNavMonth = decmClampDateToLimitWindow(decmNavMonth, limitEventWindow);
+      }
+    }
     decmShowCalendarLoading($calendarMount);
     clearTimeout(calendarClickLoaderTimer);
     calendarClickLoaderTimer = setTimeout(function () {
@@ -2246,75 +2542,6 @@ document.addEventListener("DOMContentLoaded", function () {
       decmApplyDaysOfWeekDesign($calendarMount, myAjax);
     }, 0);
   });
-
-  if (limitEventStartMonth && limitEventEndMonth) {
-    $calendarMount.on('click' + eventNs, 'button.fc-prev-button', function () {
-      $calendarMount.find(".fc-prev-button").addClass("ecs_next_class");
-      var calendar_current_date = new Date(calendar.view.title);
-
-      if (calendar_current_date.getTime() < limitEventStartMonth.getTime()) {
-        if (myAjax.hide_month_range == "disable") {
-          $calendarMount.find(".fc-prev-button").css("pointer-events", "none");
-        }
-      }
-      if (calendar_current_date.getTime() < limitEventEndMonth.getTime()) {
-        if (myAjax.hide_month_range == "disable") {
-          $calendarMount.find(".fc-next-button").css("pointer-events", "visible");
-        }
-      }
-      if (calendar.view.props.dateProfile.currentRange.start.getTime() < limitEventStartMonth.getTime()) {
-        if (myAjax.hide_month_range == "disable") {
-          $calendarMount.find(".fc-prev-button").css("pointer-events", "none");
-        }
-        if (myAjax.hide_month_range == "hide") {
-          $calendarMount.find('.fc-view-container').append("<div class='fc-list-empty-wrap2'><div class='fc-list-empty-wrap1'><div class='fc-list-empty'>Sorry, there are no more events at this time</div></div></div>");
-          $calendarMount.find('.fc-dayGridMonth-view, .fc-timeGridDay-view, .fc-timeGridWeek-view').addClass("ecs_is_loading_check");
-        }
-      }
-      if (calendar.view.props.dateProfile.currentRange.start.getTime() > limitEventStartMonth.getTime()) {
-        $calendarMount.find(".fc-next-button").css("pointer-events", "visible");
-        if (myAjax.hide_month_range == "hide") {
-          decmClearCalendarLoading($calendarMount);
-        }
-      }
-    });
-
-    $calendarMount.on('click' + eventNs, 'button.fc-next-button', function () {
-      var calendar_current_date = new Date(calendar.view.title);
-
-      $calendarMount.find(".fc-next-button").addClass("ecs_next_class");
-
-      if (calendar_current_date.getTime() > limitEventStartMonth.getTime()) {
-        if (myAjax.hide_month_range == "disable") {
-          $calendarMount.find(".fc-prev-button").css("pointer-events", "visible");
-        }
-      }
-      if (calendar_current_date.getTime() > limitEventEndMonth.getTime()) {
-        if (myAjax.hide_month_range == "disable") {
-          $calendarMount.find(".fc-next-button").css("pointer-events", "none");
-        }
-        decmClearCalendarLoading($calendarMount);
-        $calendarMount.find('.fc-dayGridMonth-view, .fc-timeGridDay-view, .fc-timeGridWeek-view').addClass("ecs_is_loading_check");
-      }
-      if (calendar.view.props.dateProfile.currentRange.end.getTime() > limitEventStartMonth.getTime()) {
-        if (myAjax.hide_month_range == "disable") {
-          $calendarMount.find(".fc-prev-button").css("pointer-events", "visible");
-        }
-        if (myAjax.hide_month_range == "hide") {
-          decmClearCalendarLoading($calendarMount);
-        }
-      }
-      if (calendar.view.props.dateProfile.currentRange.end.getTime() > limitEventEndMonth.getTime()) {
-        if (myAjax.hide_month_range == "disable") {
-          $calendarMount.find(".fc-next-button").css("pointer-events", "none");
-        }
-        if (myAjax.hide_month_range == "hide") {
-          $calendarMount.find('.fc-view-container').append("<div class='fc-list-empty-wrap2'><div class='fc-list-empty-wrap1'><div class='fc-list-empty'>Sorry, there are no more events at this time</div></div></div>");
-          $calendarMount.find('.fc-dayGridMonth-view, .fc-timeGridDay-view, .fc-timeGridWeek-view').addClass("ecs_is_loading_check");
-        }
-      }
-    });
-  }
 
   var toolbarResizeTimeout;
   jQuery(window).on('resize' + eventNs, function () {
@@ -2336,23 +2563,31 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Handle window resize to update view buttons based on device
   var resizeTimeout;
+  var lastViewButtons = initialViewButtons;
   function updateCalendarViewButtons() {
     var newViewButtons = getResponsiveViewButtons();
+    if (newViewButtons === lastViewButtons) {
+      return false;
+    }
+    lastViewButtons = newViewButtons;
+    var stayDate = decmVisibleMonthDate(calendar);
     if (calendar.getOption('headerToolbar')) {
       calendar.setOption('headerToolbar', {
-        left: 'prev,next today',
+        left: decmHeaderLeft,
         center: 'title',
         right: newViewButtons,
       });
     } else if (calendar.getOption('header')) {
       calendar.setOption('header', {
-        left: 'prev,next today',
+        left: decmHeaderLeft,
         center: 'title',
         right: newViewButtons,
       });
     }
+    decmGotoCalendarDate(calendar, stayDate);
+    return true;
   }
-  
+
   var lastHidePastEvent = decmResolveResponsiveSetting(calendarConfigSource, 'hide_past_event');
   var lastBreakpoint = decmGetContentBreakpoint();
   window.addEventListener('resize', function() {
@@ -2361,33 +2596,33 @@ document.addEventListener("DOMContentLoaded", function () {
       updateCalendarViewButtons();
       var nextBreakpoint = decmGetContentBreakpoint();
       var nextHidePastEvent = decmResolveResponsiveSetting(calendarConfigSource, 'hide_past_event');
-      if (nextBreakpoint === lastBreakpoint && String(nextHidePastEvent) === String(lastHidePastEvent)) {
-        return;
+      if (nextBreakpoint !== lastBreakpoint || String(nextHidePastEvent) !== String(lastHidePastEvent)) {
+        lastBreakpoint = nextBreakpoint;
+        lastHidePastEvent = nextHidePastEvent;
+        applyResponsiveOverlay();
+        if (calendar && typeof calendar.setOption === 'function') {
+          try {
+            calendar.setOption('columnHeaderFormat', decmResolveWeekdayNativeFormat($moduleRoot, myAjax));
+            calendar.setOption('hiddenDays', decmNormalizeHiddenWeekdays(myAjax.hidden_day));
+            calendar.setOption('firstDay', decmWeekStartFromSetting(myAjax.week_start_on));
+            calendar.setOption('showNonCurrentDates', myAjax.hide_pre_nxt_event === 'on' ? false : true);
+          } catch (e) {}
+        }
+        if (calendar && typeof calendar.refetchEvents === 'function') {
+          calendar.refetchEvents();
+        }
       }
-      lastBreakpoint = nextBreakpoint;
-      lastHidePastEvent = nextHidePastEvent;
-      applyResponsiveOverlay();
-      if (calendar && typeof calendar.setOption === 'function') {
-        try {
-          calendar.setOption('columnHeaderFormat', decmResolveWeekdayNativeFormat($moduleRoot, myAjax));
-          calendar.setOption('hiddenDays', decmNormalizeHiddenWeekdays(myAjax.hidden_day));
-          calendar.setOption('firstDay', (function () {
-            var _wso = myAjax.week_start_on;
-            var parsed = 0;
-            if (_wso !== '' && _wso !== undefined) {
-              if (!isNaN(_wso)) {
-                parsed = parseInt(_wso, 10);
-              } else if (_wso == 'Sunday') { parsed = 0; } else if (_wso == 'Monday') { parsed = 1; } else if (_wso == 'Tuesday') { parsed = 2; } else if (_wso == 'Wednesday') { parsed = 3; } else if (_wso == 'Thursday') { parsed = 4; } else if (_wso == 'Friday') { parsed = 5; } else if (_wso == 'Saturday') { parsed = 6; }
-            }
-            return (isNaN(parsed) || parsed < 0 || parsed > 6) ? 0 : parsed;
-          })());
-          calendar.setOption('showNonCurrentDates', myAjax.hide_pre_nxt_event === 'on' ? false : true);
-        } catch (e) {}
+      if (limitEventWindow && calendar.view && decmIsMonthLikeView(calendar.view.type)) {
+        var visible = decmVisibleMonthDate(calendar);
+        var restored = decmClampDateToLimitWindow(visible, limitEventWindow);
+        if (decmLocalYearMonth(visible) !== decmLocalYearMonth(restored)) {
+          decmGotoCalendarDate(calendar, restored, calendar.view.type);
+          visible = restored;
+        }
+        decmNavMonth = visible;
+        decmSyncLimitEventNav($calendarMount, visible, limitEventWindow);
       }
-      if (calendar && typeof calendar.refetchEvents === 'function') {
-        calendar.refetchEvents();
-      }
-    }, 250); // Debounce resize events
+    }, 250);
   });
   window.addEventListener('orientationchange', function () {
     setTimeout(function () {
@@ -2403,7 +2638,11 @@ document.addEventListener("DOMContentLoaded", function () {
     var _monthIdx = parseInt(myAjax.specific_month_start);
     var _year     = parseInt(myAjax.specific_years_start);
     if (!isNaN(_monthIdx) && !isNaN(_year)) {
-      calendar.gotoDate(new Date(_year, _monthIdx, 1));
+      decmNavMonth = new Date(_year, _monthIdx, 1);
+      if (limitEventWindow) {
+        decmNavMonth = decmClampDateToLimitWindow(decmNavMonth, limitEventWindow);
+      }
+      decmGotoCalendarDate(calendar, decmNavMonth);
     }
   }
 
