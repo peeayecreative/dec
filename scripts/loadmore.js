@@ -19,6 +19,23 @@ jQuery(document).ready(function ($) {
         }
     }
 
+    function decmGetAdditionalFieldIconStyle(icon) {
+        var type = icon && icon.type ? String(icon.type).toLowerCase() : '';
+        var isFa = type === 'fa' || type === 'fontawesome' || type === 'font-awesome' || (icon && String(icon.weight) === '900' && type !== 'divi' && type !== 'et');
+        var weight = isFa ? '900' : '400';
+        if (icon && icon.weight !== undefined && icon.weight !== null && icon.weight !== '') {
+            var parsed = parseInt(icon.weight, 10);
+            if (parsed === 400 || parsed === 900) {
+                weight = String(parsed);
+            }
+        }
+        return {
+            className: isFa ? 'decm-af-icon-font-fa' : 'decm-af-icon-font-et',
+            family: isFa ? 'FontAwesome' : 'ETmodules',
+            weight: weight
+        };
+    }
+
     function translateStaticLabel($elements, sourceText, translatedText) {
         $elements.each(function () {
             var $el = $(this);
@@ -188,7 +205,144 @@ jQuery(document).ready(function ($) {
         }
         var fontClass = (iconFont === 'FontAwesome') ? 'dec-numeric-icon-font-fa' : 'dec-numeric-icon-font-et';
         var posClass = position === 'first' ? 'dec-numeric-icon-first' : 'dec-numeric-icon-last';
-        return '<span class="dec-numeric-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + iconChar + '</span>';
+        return '<span class="dec-numeric-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + escapeHtml(iconChar) + '</span>';
+    }
+
+    function buildPagedPaginationIconSpan(iconChar, iconFont, position) {
+        if (!iconChar) {
+            return '';
+        }
+        var fontClass = (iconFont === 'FontAwesome') ? 'dec-paged-icon-font-fa' : 'dec-paged-icon-font-et';
+        var posClass = position === 'prev' ? 'dec-paged-icon-prev' : 'dec-paged-icon-next';
+        return '<span class="dec-paged-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + escapeHtml(iconChar) + '</span>';
+    }
+
+    function findPagedPaginationHiddenFields($paginationContainer) {
+        var $hidden = $paginationContainer.siblings('.events-main__container').find('.hidden_feild');
+        if ($hidden.length) {
+            return $hidden;
+        }
+        $hidden = $paginationContainer.closest('.event_calendar_module__inner, .decm_event_display, [class*="event-display_"]').find('.hidden_feild').first();
+        return $hidden;
+    }
+
+    function normalizePagedButtonAlign(align, defaultAlign) {
+        var value = (align || '').toString().trim().toLowerCase();
+        if (value === 'left' || value === 'center' || value === 'right') {
+            return value;
+        }
+        return defaultAlign || 'left';
+    }
+
+    function getPagedPaginationAlignClasses(prevAlign, nextAlign, hasPrev, hasNext) {
+        var prev = normalizePagedButtonAlign(prevAlign, 'left');
+        var next = normalizePagedButtonAlign(nextAlign, 'right');
+        var classes = ['dec-paged-prev-align-' + prev, 'dec-paged-next-align-' + next];
+
+        if (hasPrev && hasNext) {
+            if (prev === next) {
+                classes.push('dec-paged-group-' + prev);
+            } else if (prev === 'left' && next === 'right') {
+                classes.push('dec-paged-split-lr');
+            } else if (prev === 'right' && next === 'left') {
+                classes.push('dec-paged-split-rl');
+            } else {
+                classes.push('dec-paged-split-mixed');
+            }
+        } else if (hasNext && !hasPrev) {
+            classes.push('dec-paged-single', 'dec-paged-single-next', 'dec-paged-single-' + next);
+        } else if (hasPrev && !hasNext) {
+            classes.push('dec-paged-single', 'dec-paged-single-prev', 'dec-paged-single-' + prev);
+        }
+
+        return classes.join(' ');
+    }
+
+    function getPagedPaginationLayoutMode(prevAlign, nextAlign, hasPrev, hasNext) {
+        var prev = normalizePagedButtonAlign(prevAlign, 'left');
+        var next = normalizePagedButtonAlign(nextAlign, 'right');
+
+        if (hasPrev && hasNext) {
+            if (prev === next) {
+                return 'group-' + prev;
+            }
+            if (prev === 'left' && next === 'right') {
+                return 'split-lr';
+            }
+            if (prev === 'right' && next === 'left') {
+                return 'split-rl';
+            }
+            return 'split-mixed';
+        }
+        if (hasNext && !hasPrev) {
+            return 'single-' + next;
+        }
+        if (hasPrev && !hasNext) {
+            return 'single-' + prev;
+        }
+        return 'empty';
+    }
+
+    function getPagedPaginationContainerStyle(prevAlign, nextAlign, hasPrev, hasNext) {
+        var mode = getPagedPaginationLayoutMode(prevAlign, nextAlign, hasPrev, hasNext);
+        var styles = ['width:100%', 'gap:1em', 'align-items:center', 'float:none', 'clear:both'];
+
+        switch (mode) {
+            case 'group-left':
+                styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:flex-start');
+                break;
+            case 'group-center':
+                styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:center');
+                break;
+            case 'group-right':
+                styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:flex-end');
+                break;
+            case 'split-lr':
+                styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:space-between');
+                break;
+            case 'split-rl':
+                styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:space-between', 'flex-direction:row-reverse');
+                break;
+            case 'split-mixed':
+                styles.push('display:grid !important', 'grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)');
+                break;
+            case 'single-left':
+                styles.push('display:flex !important', 'justify-content:flex-start');
+                break;
+            case 'single-center':
+                styles.push('display:flex !important', 'justify-content:center');
+                break;
+            case 'single-right':
+                styles.push('display:flex !important', 'justify-content:flex-end');
+                break;
+            default:
+                break;
+        }
+
+        return styles.join(';');
+    }
+
+    function getPagedPaginationLinkStyle(align) {
+        var normalized = normalizePagedButtonAlign(align, 'left');
+        var col = normalized === 'left' ? '1' : (normalized === 'center' ? '2' : '3');
+        var self = normalized === 'left' ? 'start' : (normalized === 'center' ? 'center' : 'end');
+        return 'grid-column:' + col + ';grid-row:1;justify-self:' + self + ';float:none !important;clear:none !important;margin:0 !important;';
+    }
+
+    function getPagedPaginationLayoutAttributes(prevAlign, nextAlign, hasPrev, hasNext) {
+        var prev = normalizePagedButtonAlign(prevAlign, 'left');
+        var next = normalizePagedButtonAlign(nextAlign, 'right');
+        var mode = getPagedPaginationLayoutMode(prev, next, hasPrev, hasNext);
+        var baseLinkStyle = 'float:none !important;clear:none !important;margin:0 !important;';
+
+        return {
+            className: getPagedPaginationAlignClasses(prev, next, hasPrev, hasNext),
+            containerStyle: getPagedPaginationContainerStyle(prev, next, hasPrev, hasNext),
+            prevStyle: mode === 'split-mixed' && hasPrev ? getPagedPaginationLinkStyle(prev) : baseLinkStyle,
+            nextStyle: mode === 'split-mixed' && hasNext ? getPagedPaginationLinkStyle(next) : baseLinkStyle,
+            prevData: prev,
+            nextData: next
+        };
     }
 
     function escapeHtml(text) {
@@ -239,9 +393,60 @@ jQuery(document).ready(function ($) {
         return momentFormat;
     }
 
+    function deriveShortenedStartMomentFormat(dateDetailsFormat, includeYear) {
+        var format = (dateDetailsFormat || '').trim() || 'F d, Y';
+        if (includeYear) {
+            if (format.indexOf('F') !== -1) {
+                return 'MMMM D, YYYY';
+            }
+            if (format.indexOf('M') !== -1) {
+                return 'MMM D, YYYY';
+            }
+            if (format.indexOf('m') !== -1) {
+                return 'MM/DD/YYYY';
+            }
+            return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '')) + ', YYYY';
+        }
+        if (format.indexOf('F') !== -1) {
+            return 'MMMM D';
+        }
+        if (format.indexOf('M') !== -1) {
+            return 'MMM D';
+        }
+        if (format.indexOf('m') !== -1) {
+            return 'M/D';
+        }
+        return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '') || 'M j');
+    }
+
+    function setPaginationLoading($btn, isLoading) {
+        var $pagination = $btn && $btn.length ? $btn.closest('.pagination-container') : $();
+        if (!$pagination.length && $btn && $btn.jquery) {
+            $pagination = $btn;
+        }
+        if (!$pagination.length || !$pagination.hasClass('pagination-container')) {
+            return;
+        }
+
+        var $events = $pagination.siblings('.events-main__container');
+        if (!$events.length) {
+            $events = $pagination.closest('.event_calendar_module__inner, .decm_event_display, [class*="event-display_"]').find('.events-main__container').first();
+        }
+
+        $pagination.toggleClass('dec-pagination-is-loading', !!isLoading);
+        $events.toggleClass('dec-events-is-loading', !!isLoading);
+    }
+
     function decm_get_event(button, page, per_page, hiddenF) {
 
         const e = button;
+
+        var $clicked = $(e);
+        var $paginationContainer = $clicked.closest('.pagination-container');
+        if ($paginationContainer.hasClass('dec-pagination-is-loading')) {
+            return;
+        }
+        setPaginationLoading($paginationContainer, true);
 
         var params = {
             'disable_title_link': '',
@@ -259,6 +464,8 @@ jQuery(document).ready(function ($) {
             'show_more_info': '',
             'show_more_info_btn_text': '',
             'button_make_fullwidth': 'off',
+            'button_make_fullwidth_tablet': '',
+            'button_make_fullwidth_phone': '',
             'button_align': '',
             'button_align_tablet': '',
             'button_align_phone': '',
@@ -298,6 +505,8 @@ jQuery(document).ready(function ($) {
             'show_end_date_details': '',
             'date_detail_label': '',
             'date_details_format': '',
+            'shorten_multidate': 'on',
+            'start_date_format': '',
             'show_time_details': '',
             'details_time_label': '',
             'details_time_format': '',
@@ -345,11 +554,25 @@ jQuery(document).ready(function ($) {
             'load_more_text': 'Load More',
             'excerpt_length': '27',
             'show_excerpt': 'off',
+            'show_excerpt_tablet': '',
+            'show_excerpt_phone': '',
+            'show_excerpt_phone_wide': '',
+            'show_excerpt_tablet_wide': '',
+            'show_excerpt_widescreen': '',
+            'show_excerpt_ultra_wide': '',
+            'show_excerpt_render': 'off',
+            'excerpt_content': 'show_excerpt',
             'show_pagination': 'off',
             'page': '',
             'per_page': '3',
             'layout': 'grid',
+            'layout_desktop': '',
+            'layout_tablet': '',
+            'layout_phone': '',
             'layout_type': '',
+            'layout_type_desktop': '',
+            'layout_type_tablet': '',
+            'layout_type_phone': '',
             'show_callout_box_starttime': '',
             'show_colon_label': '',
             'show_timezone': 'off',
@@ -412,7 +635,6 @@ jQuery(document).ready(function ($) {
             'feature_image_overlay_icon_color': '#fff',
             'feature_image_overlay_background': 'rgba(0,0,0,0.4)',
             'cover_feature_image_overlay_on': '',
-            'cover_image_overlay_color': 'rgba(0,0,0,0.4)',
         };
 
         // Loop through each key and get the value from the hidden input field
@@ -469,17 +691,26 @@ jQuery(document).ready(function ($) {
         // var data_page = 2;
         params['action'] = 'decm_get_events_action';  // Example action key
         params['security'] = ajax_object.ajax_nonce;
+        // First-page size must match the current viewport (phone/tablet/desktop).
+        // Hidden fields store the desktop events_count; using that on mobile skips
+        // events that were never shown on the first page (e.g. Jan–March).
+        params['events_count'] = getResponsiveEventsCount(params);
         if (page != '' && page != undefined) {
             params['page'] = page;
             // For load more, use the per_page value passed (from load_more_per_page setting)
             // Convert to number to ensure it's used correctly
             params['per_page'] = per_page ? parseInt(per_page, 10) : parseInt(params['per_page'] || '3', 10);
+            if (params['pagination_type'] === 'load_more') {
+                params['already_loaded'] = thiscontainer.find('.event-container').length;
+            }
             // console.log(per_page, params['per_page']);
         } else {
             // For initial load, use responsive events_count
             params['per_page'] = getResponsiveEventsCount(params);
         }
-        if (params.layout == 'grid' || params.layout == 'cover') {
+        if (window.decmEventDisplayResponsiveLayout) {
+            window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+        } else if (params.layout == 'grid' || params.layout == 'cover') {
             params.layout_type = '';
         }
         // console.log(params);
@@ -555,6 +786,30 @@ jQuery(document).ready(function ($) {
                 // Desktop
                 return params.button_align;
             }
+        }
+
+        // Same inherit as events_count: phone || tablet || desktop.
+        function getResponsiveToggle(params, key) {
+            var screenWidth = document.documentElement.clientWidth || window.innerWidth || screen.width;
+            var desktop = (params[key] !== undefined && params[key] !== null && params[key] !== '') ? params[key] : 'off';
+            var tablet = params[key + '_tablet'];
+            var phone = params[key + '_phone'];
+            var hasTablet = tablet !== '' && tablet !== undefined && tablet !== null;
+            var hasPhone = phone !== '' && phone !== undefined && phone !== null;
+
+            if (screenWidth <= 767) {
+                if (hasPhone) {
+                    return phone;
+                }
+                if (hasTablet) {
+                    return tablet;
+                }
+                return desktop;
+            }
+            if (screenWidth >= 768 && screenWidth <= 1024) {
+                return hasTablet ? tablet : desktop;
+            }
+            return desktop;
         }
 
         // Function to get responsive events_count value
@@ -709,6 +964,11 @@ jQuery(document).ready(function ($) {
                 var events = response.data.events;
                 var container = thiscontainer;
 
+                if (window.decmEventDisplayResponsiveLayout) {
+                    window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+                    window.decmEventDisplayResponsiveLayout.updateContainerLayoutClasses(container, params.layout, params);
+                }
+
                 // Re-retrieve website link settings before rendering (CRITICAL for pagination)
                 ['website_link', 'website_link_target', 'custom_web_link'].forEach(function (fieldName) {
                     var retrievedValue = hiddenFieldsContainer.find('input.hidden-data-field[name="' + fieldName + '"]').val() || '';
@@ -748,7 +1008,7 @@ jQuery(document).ready(function ($) {
                                 allEventHtml += '<h2 class="ecs-events-list-separator-month">' +
                                     '<span class="month-heading ecs-events-calendar-list__month-separator-text">' +
                                     escapeHtml(monthHeading) +
-                                    '</span></h2>';
+                                    '</span><span class="ecs-events-list-separator-month__line" aria-hidden="true"></span></h2>';
                             }
                         }
                         // Always skip marker rows so they never render as event cards.
@@ -820,8 +1080,24 @@ jQuery(document).ready(function ($) {
                     // -------------------------------
                     // Date Details (PHP 'F d, Y')
                     const momentFormatDetails = phpToMomentFormat(params.date_details_format || 'F d, Y');
-                    const formattedDate_startDate_Details = fmt(startM, momentFormatDetails) || (event.date || event.callout_start_date || '');
-                    const formattedDate_endDate_Details = fmt(endM, momentFormatDetails) || (event.callout_end_date || '');
+                    const shortenOn = params.shorten_multidate === 'on' || params.shorten_multidate === 'true';
+                    const isMultidayDetails = startM && endM && startM.isValid() && endM.isValid() && !startM.isSame(endM, 'day');
+                    let formattedDate_startDate_Details = fmt(startM, momentFormatDetails) || (event.date || event.callout_start_date || '');
+                    let formattedDate_endDate_Details = fmt(endM, momentFormatDetails) || (event.callout_end_date || '');
+                    if (shortenOn && isMultidayDetails) {
+                        if (params.start_date_format) {
+                            formattedDate_startDate_Details = fmt(startM, phpToMomentFormat(params.start_date_format));
+                        } else if (startM.year() === endM.year()) {
+                            formattedDate_startDate_Details = fmt(startM, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', false));
+                        } else {
+                            formattedDate_startDate_Details = fmt(startM, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', true));
+                        }
+                        if (startM.format('MMM YYYY') === endM.format('MMM YYYY')) {
+                            formattedDate_endDate_Details = fmt(endM, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'D, YYYY');
+                        } else {
+                            formattedDate_endDate_Details = fmt(endM, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'MMM D, YYYY');
+                        }
+                    }
 
                     // -------------------------------
                     // Time Details (PHP 'g:i a')
@@ -896,29 +1172,20 @@ jQuery(document).ready(function ($) {
 
                     const buttonAlign = getResponsiveButtonAlign(params);
                     const buttonAlignEnabledClass = (buttonAlign === 'on') ? 'button-align-enabled' : '';
-                    var coverBgStyle = '';
                     var coverOverlayOn = false;
                     var coverHasImageSrc = false;
                     if (params.layout === 'cover') {
                         coverOverlayOn = isCoverOverlayOn(params.cover_feature_image_overlay_on);
                         coverHasImageSrc = isFeatureImageOn(params.show_feature_image) && event.image &&
                             (event.image.match(/src=["']([^"']+)["']/) || event.image.match(/src=([^\s>]+)/));
-                        if (!coverHasImageSrc && !coverOverlayOn && params.cover_image_overlay_color) {
-                            coverBgStyle = ' style="background-color: ' + params.cover_image_overlay_color + '; background: ' + params.cover_image_overlay_color + ';"';
-                        }
                     }
                     eventHtml += '<div class="event-container ' + layoutType + ' cs-col-' + columns + ' ' + buttonAlignEnabledClass + '" ' +
                         'data-columns-desktop="' + columnsDesktop + '" ' +
                         'data-columns-tablet="' + columnsTablet + '" ' +
-                        'data-columns-phone="' + columnsPhone + '"' +
-                        coverBgStyle + '>';
+                        'data-columns-phone="' + columnsPhone + '">';
                     if (params.layout === 'cover') {
                         if (coverOverlayOn) {
-                            var coverOverlayStyle = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;';
-                            if (params.cover_image_overlay_color) {
-                                coverOverlayStyle = 'background:' + params.cover_image_overlay_color + '; ' + coverOverlayStyle;
-                            }
-                            eventHtml += '<div class="cover_overlayop" style="' + coverOverlayStyle + '"></div>';
+                            eventHtml += '<div class="cover_overlayop"></div>';
                         }
                         if (coverHasImageSrc) {
                             if ((event.image || '').indexOf('tribe-events-event-image') !== -1) {
@@ -1053,7 +1320,7 @@ jQuery(document).ready(function ($) {
                     const hasImageSrc = event.image && (event.image.match(/src=["']([^"']+)["']/) || event.image.match(/src=([^\s>]+)/));
                     const isGridOrList = params.layout === 'grid' || params.layout === 'list';
                     const hasImage = event.image && isFeatureImageOn(params.show_feature_image) && (isGridOrList ? hasImageSrc : true);
-                    const imageAlignClass = hasImage ? 'image-align ' : '';
+                    const imageAlignClass = (hasImage && params.layout !== 'cover') ? 'image-align ' : '';
                     eventHtml += '<div class="' + imageAlignClass + 'img-width decm-show-image-left imge_callout">';
                     const imageLink = getEventImageLink(event, params);
                     if (imageLink.showLink && hasImage) {
@@ -1211,8 +1478,12 @@ jQuery(document).ready(function ($) {
                     } else {
                         if (params.layout === 'grid' || params.layout == 'cover') {
                             if (params.show_callout_box === 'on') {
-                                eventHtml += '<div class="callout-column">';
-                                eventHtml += '<div class="' + params.show_callout_box_class + ' ' + classClout + '">';
+                                if (params.layout === 'cover') {
+                                    eventHtml += '<div class="' + params.show_callout_box_class + ' ' + classClout + '">';
+                                } else {
+                                    eventHtml += '<div class="callout-column">';
+                                    eventHtml += '<div class="' + params.show_callout_box_class + ' ' + classClout + '">';
+                                }
 
                                 // Date
                                 if (params.show_callout_box_date === 'on') {
@@ -1299,7 +1570,7 @@ jQuery(document).ready(function ($) {
                                 eventHtml += '</span>';
                             }
 
-                                eventHtml += '</div></div>';
+                                eventHtml += params.layout === 'cover' ? '</div>' : '</div></div>';
                             }
                         }
                     }
@@ -1388,15 +1659,13 @@ jQuery(document).ready(function ($) {
                             eventHtml += '</span>';
                         } else {
                             var timeIconClass = (params.show_label_icon === 'icon' || params.show_label_icon === 'label_icon') ? 'event-time-decm-icon' : '';
-                            eventHtml += '<div class="event__time ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (!isAllDay ? (params.show_label_icon || '') : '') + ' ' + (!isAllDay ? timeIconClass : '') + '">';
-                            if (!isAllDay) {
-                                eventHtml += '<div class="label-icon-line">';
-                                if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon' || params.show_label_icon !== 'none') {
-                                    const timeLabel = (params.details_time_label === '' || params.details_time_label === 'Time') ? 'Time' : params.details_time_label;
-                                    eventHtml += '<span class="event__time_label ecs-detail-label">' + __t(timeLabel) + (params.show_colon_label === 'on' ? ': ' : ' ') + '</span>';
-                                }
-                                eventHtml += '</div>';
+                            eventHtml += '<div class="event__time ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (params.show_label_icon || '') + ' ' + timeIconClass + '">';
+                            eventHtml += '<div class="label-icon-line">';
+                            if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon' || params.show_label_icon !== 'none') {
+                                const timeLabel = (params.details_time_label === '' || params.details_time_label === 'Time') ? 'Time' : params.details_time_label;
+                                eventHtml += '<span class="event__time_label ecs-detail-label">' + __t(timeLabel) + (params.show_colon_label === 'on' ? ': ' : ' ') + '</span>';
                             }
+                            eventHtml += '</div>';
                             eventHtml += '<span class="event__time_value">' + ' ';
                             if (isAllDay || (!formattedDate_startTimeDetails && !formattedDate_endTimeDetails)) {
                                 eventHtml += allDayText;
@@ -1736,7 +2005,7 @@ jQuery(document).ready(function ($) {
                     }
 
                     // TEC Pro Additional Fields
-                    if (Array.isArray(event.additional_fields) && event.additional_fields.length) {
+                    if (params.show_additional_fields !== 'off' && Array.isArray(event.additional_fields) && event.additional_fields.length) {
                         var afSettings = {};
                         try {
                             if (params.additional_field_settings) {
@@ -1765,7 +2034,9 @@ jQuery(document).ready(function ($) {
                                 customIconChar = iconTextarea.value;
                             }
                             var hasCustomIcon = showIcons && !!customIconChar;
-                            var iconFontClass = (setting.icon && setting.icon.type === 'fa') ? 'decm-af-icon-font-fa' : 'decm-af-icon-font-et';
+                            var iconStyle = decmGetAdditionalFieldIconStyle(setting.icon);
+                            var iconFontClass = iconStyle.className;
+                            var iconFontFamily = iconStyle.family;
 
                             if (params.stack_event_d === 'off') {
                                 eventHtml += '<span class="event__additional_field_value event__additional_field_value--' + slug + '">' + displayValue + '</span>';
@@ -1774,7 +2045,7 @@ jQuery(document).ready(function ($) {
                                 var customIconClass = hasCustomIcon ? ' has-custom-icon' : '';
                                 eventHtml += '<div class="event__additional_field event__additional_field--' + slug + ' ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (params.show_label_icon || '') + additionalIconClass + customIconClass + '">';
                                 if (hasCustomIcon) {
-                                    eventHtml += '<span class="decm-additional-field-custom-icon ' + iconFontClass + '" aria-hidden="true">' + customIconChar + '</span>';
+                                    eventHtml += '<span class="decm-additional-field-custom-icon ' + iconFontClass + '" style="font-family:' + iconFontFamily + ';font-weight:' + iconStyle.weight + ';" aria-hidden="true">' + customIconChar + '</span>';
                                 }
                                 if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
                                     const labelSuffix = params.show_colon_label === 'on' ? ':' : '';
@@ -1790,11 +2061,11 @@ jQuery(document).ready(function ($) {
                         eventHtml += '</div>';
                     }
 
-                    // Event description excerpt
-                    if (params.show_excerpt === 'on') {
+                    // Event description excerpt (include HTML when any breakpoint shows it; CSS hides the rest)
+                    if (params.show_excerpt_render === 'on' || params.show_excerpt === 'on' || params.show_excerpt_tablet === 'on' || params.show_excerpt_phone === 'on' || params.show_excerpt_phone_wide === 'on' || params.show_excerpt_tablet_wide === 'on' || params.show_excerpt_widescreen === 'on' || params.show_excerpt_ultra_wide === 'on') {
                         let t = '';
-                        if (params.excerpt_content === 'show_desc' && event.post_description) {
-                            t = event.post_description;
+                        if ((params.excerpt_content === 'show_desc' || params.excerpt_content === '_show' || params.excerpt_content === 'show_description' || params.excerpt_content === 'description') && (event.post_description || event.content)) {
+                            t = String(event.post_description || event.content).replace(/\[\/?et_pb[\s\S]*?\]/gi, '').replace(/<[^>]*>/g, '');
                         } else if (event.post_excerpt) {
                             t = event.post_excerpt;
                         }
@@ -1812,6 +2083,9 @@ jQuery(document).ready(function ($) {
                         const buttonText = event.more_info_button_text || translateMoreInfoButtonText(params.show_more_info_btn_text);
                         const buttonAlign = getResponsiveButtonAlign(params);
                         const buttonAlignClass = (buttonAlign === 'on') ? 'button-align-bottom' : '';
+                        var moreInfoFullwidthOn = getResponsiveToggle(params, 'button_make_fullwidth') === 'on';
+                        var moreInfoFullwidthClass = moreInfoFullwidthOn ? ' dec-button-item-fullwidth' : '';
+                        var moreInfoFullwidthBtnClass = moreInfoFullwidthOn ? ' act-view-more-fullwidth' : '';
                         if ([
                             'image_detail',
                             'detail_image',
@@ -1820,7 +2094,7 @@ jQuery(document).ready(function ($) {
                             'callout_image_detail'
                         ].includes(layoutType)) {
                             eventHtml += '<div class="event__show_more_if ' + buttonAlignClass + '" data-button-align-desktop="' + (params.button_align || 'off') + '" data-button-align-tablet="' + (params.button_align_tablet || '') + '" data-button-align-phone="' + (params.button_align_phone || '') + '">';
-                            eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper mb-2 ' + buttonAlignClass + '">';
+                            eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper mb-2 ' + buttonAlignClass + moreInfoFullwidthClass + '">';
                             const buttonLink = getEventButtonLink(event, params);
                             // Build icon data attributes
                             let iconDataAttrs = '';
@@ -1833,7 +2107,7 @@ jQuery(document).ready(function ($) {
                             if (params.more_info_button_icon_phone) {
                                 iconDataAttrs += ' data-icon-phone="' + escapeHtml(params.more_info_button_icon_phone) + '"';
                             }
-                            var moreInfoBtnClass = 'act-view-more et_pb_button' + (params.button_make_fullwidth === 'on' ? ' act-view-more-fullwidth' : '') + getButtonIconClassSuffix(params, 'more_info');
+                            var moreInfoBtnClass = 'act-view-more et_pb_button' + moreInfoFullwidthBtnClass + getButtonIconClassSuffix(params, 'more_info');
                             if (buttonLink.showLink) {
                                 eventHtml += '<a href="' + buttonLink.url + '" rel="bookmark" class="' + moreInfoBtnClass + '"' + buttonLink.target + iconDataAttrs + '>' +
                                     buttonText + '</a>';
@@ -1844,7 +2118,7 @@ jQuery(document).ready(function ($) {
                         } else {
                             if (params.layout === 'grid' || params.layout == 'cover') {
                                 eventHtml += '<div class="event__show_more_if ' + buttonAlignClass + '" data-button-align-desktop="' + (params.button_align || 'off') + '" data-button-align-tablet="' + (params.button_align_tablet || '') + '" data-button-align-phone="' + (params.button_align_phone || '') + '">';
-                                eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper mb-2 ' + buttonAlignClass + '">';
+                                eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper mb-2 ' + buttonAlignClass + moreInfoFullwidthClass + '">';
                                 const buttonLink = getEventButtonLink(event, params);
                                 // Build icon data attributes
                                 let iconDataAttrs = '';
@@ -1857,7 +2131,7 @@ jQuery(document).ready(function ($) {
                                 if (params.more_info_button_icon_phone) {
                                     iconDataAttrs += ' data-icon-phone="' + escapeHtml(params.more_info_button_icon_phone) + '"';
                                 }
-                                var moreInfoBtnClassGrid = 'act-view-more et_pb_button' + (params.button_make_fullwidth === 'on' ? ' act-view-more-fullwidth' : '') + getButtonIconClassSuffix(params, 'more_info');
+                                var moreInfoBtnClassGrid = 'act-view-more et_pb_button' + moreInfoFullwidthBtnClass + getButtonIconClassSuffix(params, 'more_info');
                                 if (buttonLink.showLink) {
                                     eventHtml += '<a href="' + buttonLink.url + '" rel="bookmark" class="' + moreInfoBtnClassGrid + '"' + buttonLink.target + iconDataAttrs + '>' +
                                         buttonText + '</a>';
@@ -1894,9 +2168,9 @@ jQuery(document).ready(function ($) {
                         var buttonAlignEnabledClassButton = (buttonAlign === 'on') ? 'button-align-enabled' : '';
                         eventHtml += '<div class="button-column ' + buttonAlignEnabledClassButton + '">';
                         eventHtml += '<div class="event__show_more_if ' + buttonAlignClass + '" data-button-align-desktop="' + (params.button_align || 'off') + '" data-button-align-tablet="' + (params.button_align_tablet || '') + '" data-button-align-phone="' + (params.button_align_phone || '') + '">';
-                        eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper ' + buttonAlignClass + '">';
+                        eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper ' + buttonAlignClass + moreInfoFullwidthClass + '">';
                         const buttonLink = getEventButtonLink(event, params);
-                        var moreInfoBtnClassSep = 'act-view-more et_pb_button' + (params.button_make_fullwidth === 'on' ? ' act-view-more-fullwidth' : '') + getButtonIconClassSuffix(params, 'more_info');
+                        var moreInfoBtnClassSep = 'act-view-more et_pb_button' + moreInfoFullwidthBtnClass + getButtonIconClassSuffix(params, 'more_info');
                         if (buttonLink.showLink) {
                             eventHtml += '<a href="' + buttonLink.url + '" rel="bookmark" class="' + moreInfoBtnClassSep + '"' + buttonLink.target + iconDataAttrsSeparate + '>' +
                                 buttonText + '</a>';
@@ -1944,10 +2218,21 @@ jQuery(document).ready(function ($) {
                     calculateEqualHeights(thiscontainer);
                 }, 200);
                 updatePagination(response.data.pagination, params, $(e).closest('.pagination-container'));
+                responsiveLayoutSyncInProgress = false;
+                if (responsiveLayoutSyncQueued) {
+                    responsiveLayoutSyncQueued = false;
+                    scheduleResponsiveLayoutSync(true);
+                }
                 // console.log(response.data.pagination);
             },
             error: function () {
+                responsiveLayoutSyncInProgress = false;
+                responsiveLayoutSyncQueued = false;
                 alert(__t("AJAX error occurred!"));
+            },
+            complete: function () {
+                // Use stored container — clicked button is replaced after updatePagination.
+                setPaginationLoading($paginationContainer, false);
             }
         });
     }
@@ -1955,6 +2240,12 @@ jQuery(document).ready(function ($) {
     $(document).on('click', '.prev, .next, .dec-numeric a, .load-more-btn', function (e) {
         e.preventDefault();
         const button = $(this);
+        if (button.closest('.pagination-container').hasClass('dec-pagination-is-loading')) {
+            return;
+        }
+        if (button.hasClass('current') || button.attr('aria-current') === 'page') {
+            return;
+        }
         const hiddenF = $(this).closest('.pagination-container').siblings('.events-main__container').find('.hidden_feild');
         var page = $(this).data('page');
         
@@ -1973,15 +2264,33 @@ jQuery(document).ready(function ($) {
         
         var paginationHtml = '';
         switch (paginationData.pagination_type) {
-            case 'paged':
+            case 'paged': {
+                const $hidden = findPagedPaginationHiddenFields($paginationContainer);
+                const prevIconChar = ($hidden.find('input[name="paged_prev_button_icon"]').val() || '').trim();
+                const prevIconFont = $hidden.find('input[name="paged_prev_button_icon_font"]').val() || 'ETmodules';
+                const nextIconChar = ($hidden.find('input[name="paged_next_button_icon"]').val() || '').trim();
+                const nextIconFont = $hidden.find('input[name="paged_next_button_icon_font"]').val() || 'ETmodules';
+                const prevIconClass = prevIconChar ? ' dec-paged-custom-icon dec-paged-inline-icon' : '';
+                const nextIconClass = nextIconChar ? ' dec-paged-custom-icon dec-paged-inline-icon' : '';
+                const iconOnHover = $hidden.find('input[name="paged_button_icon_on_hover"]').val() || 'on';
+                const iconHoverClass = iconOnHover === 'off' ? ' dec-paged-icon-no-hover' : '';
+                const prevIconSpan = buildPagedPaginationIconSpan(prevIconChar, prevIconFont, 'prev');
+                const nextIconSpan = buildPagedPaginationIconSpan(nextIconChar, nextIconFont, 'next');
+                const hasPrev = paginationData.current_page > 1;
+                const hasNext = paginationData.current_page < paginationData.total_pages;
+                const prevAlign = $hidden.find('input[name="paged_prev_button_align"]').val() || 'left';
+                const nextAlign = $hidden.find('input[name="paged_next_button_align"]').val() || 'right';
+                const pagedLayout = getPagedPaginationLayoutAttributes(prevAlign, nextAlign, hasPrev, hasNext);
+
                 paginationHtml = `
-                <div class="dec-pagination dec-prev-next">
-                    ${paginationData.current_page > 1 ?
-                        `<a href="#" class="prev ecs-page_alignment_left" data-page="${paginationData.current_page - 1}">${__t(params.prv_link_btn)}</a>` : ''}
-                    ${paginationData.current_page < paginationData.total_pages ?
-                        `<a href="#" class="next ecs-page_alignment_right" data-page="${paginationData.current_page + 1}">${__t(params.next_link_btn)}</a>` : ''}
+                <div class="dec-pagination dec-prev-next ${pagedLayout.className}" style="${pagedLayout.containerStyle}" data-paged-prev-align="${pagedLayout.prevData}" data-paged-next-align="${pagedLayout.nextData}">
+                    ${hasPrev ?
+                        `<a href="#" class="prev${prevIconClass}${iconHoverClass}" style="${pagedLayout.prevStyle}" data-page="${paginationData.current_page - 1}">${prevIconSpan}${__t(params.prv_link_btn)}</a>` : ''}
+                    ${hasNext ?
+                        `<a href="#" class="next${nextIconClass}${iconHoverClass}" style="${pagedLayout.nextStyle}" data-page="${paginationData.current_page + 1}">${__t(params.next_link_btn)}${nextIconSpan}</a>` : ''}
                 </div>`;
                 break;
+            }
 
             case 'numeric_pagination': {
                 const total = Number(paginationData.total_pages) || 1;
@@ -2007,7 +2316,7 @@ jQuery(document).ready(function ($) {
 
                 // "First" when not on first page
                 if (cur > 1) {
-                    html += `<a href="#" data-page="1" class="dec-page-text-first dec-page-text-display ecs-page-numbers${firstIconClass}">${firstIconSpan}${firstIconChar ? '' : '« '}${firstText}</a>`;
+                    html += `<a href="#" data-page="1" class="dec-page-text-first dec-page-text-display ecs-page-numbers${firstIconClass}">${firstIconSpan}<span class="dec-numeric-label">${firstIconChar ? '' : '« '}${firstText}</span></a>`;
                 }
 
                 const addPage = (p) => {
@@ -2035,7 +2344,7 @@ jQuery(document).ready(function ($) {
 
                 // "Last" when not on last page
                 if (cur < total) {
-                    html += `<a href="#" data-page="${total}" class="dec-page-text-last dec-page-text-display ecs-page-numbers${lastIconClass}">${lastText}${lastIconSpan}${lastIconChar ? '' : ' »'}</a>`;
+                    html += `<a href="#" data-page="${total}" class="dec-page-text-last dec-page-text-display ecs-page-numbers${lastIconClass}"><span class="dec-numeric-label">${lastText}${lastIconChar ? '' : ' »'}</span>${lastIconSpan}</a>`;
                 }
 
                 html += '</div>';
@@ -2079,16 +2388,96 @@ jQuery(document).ready(function ($) {
 
         $paginationContainer.find('.dec-pagination').remove();
         $paginationContainer.html(paginationHtml);
+        if (window.decmEventDisplayResponsiveLayout && typeof window.decmEventDisplayResponsiveLayout.applyPagedPaginationLayout === 'function') {
+            window.decmEventDisplayResponsiveLayout.applyPagedPaginationLayout($paginationContainer.find('.dec-pagination.dec-prev-next'));
+        }
 
     }
 
-    // Global resize listener for equal heights calculation
-    var resizeTimeout;
+    // Global listeners for responsive layout switching (resize + matchMedia for DevTools).
+    var responsiveLayoutResizeTimeout;
+    var responsiveLayoutSyncInProgress = false;
+    var responsiveLayoutSyncQueued = false;
+
+    function syncResponsiveEventFeedLayouts(forceRerender) {
+        if (!window.decmEventDisplayResponsiveLayout) {
+            return;
+        }
+
+        if (responsiveLayoutSyncInProgress) {
+            responsiveLayoutSyncQueued = true;
+            return;
+        }
+
+        var responsive = window.decmEventDisplayResponsiveLayout;
+        var breakpoint = responsive.getScreenBreakpoint();
+        var needsRerender = false;
+
+        $('.decm_event_display, .event-display').each(function () {
+            var $module = $(this);
+            var $container = $module.find('.events-main__container').first();
+            if (!$container.length) {
+                return;
+            }
+
+            var params = responsive.readLayoutParamsFromContainer
+                ? responsive.readLayoutParamsFromContainer($container)
+                : {};
+
+            if (!responsive.readLayoutParamsFromContainer) {
+                $container.find('input.hidden-data-field').each(function () {
+                    var $field = $(this);
+                    params[$field.attr('name')] = $field.val() || '';
+                });
+            }
+
+            responsive.applyResponsiveLayoutParams(params, breakpoint);
+            var expectedLayout = params.layout;
+            var currentLayout = responsive.getLayoutFromContainer($container);
+
+            if (currentLayout !== expectedLayout || $container.attr('data-active-layout') !== expectedLayout) {
+                var $paginationContainer = $module.find('.pagination-container').first();
+                if ($paginationContainer.length) {
+                    responsiveLayoutSyncInProgress = true;
+                    needsRerender = true;
+                    var hiddenF = $container.find('.hidden_feild');
+                    decm_get_event($paginationContainer, 1, '', hiddenF);
+                }
+            }
+        });
+
+        if (!needsRerender) {
+            responsiveLayoutSyncQueued = false;
+        }
+    }
+
+    function scheduleResponsiveLayoutSync(forceRerender) {
+        clearTimeout(responsiveLayoutResizeTimeout);
+        responsiveLayoutResizeTimeout = setTimeout(function () {
+            syncResponsiveEventFeedLayouts(forceRerender);
+        }, 150);
+    }
+
+    syncResponsiveEventFeedLayouts(false);
+
+    if (window.decmEventDisplayResponsiveLayout && window.decmEventDisplayResponsiveLayout.onBreakpointChange) {
+        window.decmEventDisplayResponsiveLayout.onBreakpointChange(function () {
+            scheduleResponsiveLayoutSync(true);
+        });
+    }
+
+    $(window).on('resize orientationchange', function() {
+        scheduleResponsiveLayoutSync(true);
+    });
+
+    var equalHeightsResizeTimeout;
     $(window).on('resize', function() {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(function() {
+        clearTimeout(equalHeightsResizeTimeout);
+        equalHeightsResizeTimeout = setTimeout(function() {
             $('.events-main__container.button-align-enabled').each(function() {
-                calculateEqualHeights($(this));
+                if (typeof calculateEqualHeights === 'function') {
+                    calculateEqualHeights($(this));
+                }
             });
         }, 150);
     });
