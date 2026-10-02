@@ -3,6 +3,144 @@ jQuery(function ($) {
 		? function (s) { return wp.i18n.__(s, 'decm-divi-event-calendar-module'); }
 		: function (s) { return s; };
 
+	function isDetailsToggleRenderOn(params, key) {
+		params = params || {};
+		return params[key + '_render'] === 'on'
+			|| params[key] === 'on'
+			|| params[key + '_tablet'] === 'on'
+			|| params[key + '_phone'] === 'on'
+			|| params[key + '_phone_wide'] === 'on'
+			|| params[key + '_tablet_wide'] === 'on'
+			|| params[key + '_widescreen'] === 'on'
+			|| params[key + '_ultra_wide'] === 'on';
+	}
+
+	function getDetailsResponsiveLabel(params, key, fallback) {
+		var layout = window.decmEventDisplayResponsiveLayout;
+		var resolved;
+		if (layout && typeof layout.getResponsiveParam === 'function') {
+			resolved = layout.getResponsiveParam(params, key, fallback);
+		} else {
+			resolved = (params && params[key] !== undefined && params[key] !== null && params[key] !== '')
+				? params[key]
+				: fallback;
+		}
+		return (resolved === undefined || resolved === null || resolved === '') ? fallback : resolved;
+	}
+
+	/**
+	 * Keep the open filter item above wrapped sibling filters (CSS class only — no inline z-index).
+	 */
+	function decm_syncFilterDropdownStacking() {
+		$('.decm_event_filter_child').each(function () {
+			var $child = $(this);
+			var isOpen = $child.find('.dec-filter-list').filter(function () {
+				return $(this).is(':visible');
+			}).length > 0;
+
+			$child.toggleClass('dec-filter-dropdown-active', isOpen);
+			$child.find('.dec-filter-bar').toggleClass('dec-filter-dropdown-active', isOpen);
+		});
+	}
+
+	function decm_tagEventFilterDateRangePicker() {
+		var drp = $('#reportrange').data('daterangepicker');
+		if (drp && drp.container) {
+			drp.container.addClass('decm-event-filter-daterangepicker');
+			decm_syncDateRangeDropdownStyles(drp);
+		}
+	}
+
+	function decmGetAdditionalFieldIconStyle(icon) {
+		var type = icon && icon.type ? String(icon.type).toLowerCase() : '';
+		var isFa = type === 'fa' || type === 'fontawesome' || type === 'font-awesome' || (icon && String(icon.weight) === '900' && type !== 'divi' && type !== 'et');
+		var weight = isFa ? '900' : '400';
+		if (icon && icon.weight !== undefined && icon.weight !== null && icon.weight !== '') {
+			var parsed = parseInt(icon.weight, 10);
+			if (parsed === 400 || parsed === 900) {
+				weight = String(parsed);
+			}
+		}
+		return {
+			className: isFa ? 'decm-af-icon-font-fa' : 'decm-af-icon-font-et',
+			family: isFa ? 'FontAwesome' : 'ETmodules',
+			weight: weight
+		};
+	}
+
+	/**
+	 * Copy Category Filters Dropdown styles onto Date Range presets (PHP frontend).
+	 * Item styles remain after Custom Range (show-calendar).
+	 */
+	function decm_syncDateRangeDropdownStyles(drp) {
+		if (!drp || !drp.container) {
+			return;
+		}
+		var $container = jQuery(drp.container);
+		$container.addClass('decm-event-filter-daterangepicker');
+
+		var $item = jQuery('.decm_event_filter_parent .dec-filter-list li').first();
+		if (!$item.length) {
+			$item = jQuery('.dec-filter-list li').first();
+		}
+		if (!$item.length) {
+			return;
+		}
+
+		var $panel = $item.closest('.dec-filter-list');
+		var itemCs = window.getComputedStyle($item.get(0));
+		var props = [
+			'font-size', 'line-height', 'font-family', 'font-weight', 'letter-spacing', 'color',
+			'background-color',
+			'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+			'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
+			'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style',
+			'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+			'border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius'
+		];
+
+		$container.find('.ranges li').each(function () {
+			var node = this;
+			props.forEach(function (prop) {
+				var val = itemCs.getPropertyValue(prop);
+				if (val) {
+					node.style.setProperty(prop, val, 'important');
+				}
+			});
+		});
+
+		if ($panel.length) {
+			var root = $container.get(0);
+			var panelCs = window.getComputedStyle($panel.get(0));
+			var showCalendar = $container.hasClass('show-calendar');
+			var panelBgProps = [
+				'background-color',
+				'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
+				'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style',
+				'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+				'border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius',
+				'box-shadow'
+			];
+			panelBgProps.forEach(function (prop) {
+				var val = panelCs.getPropertyValue(prop);
+				if (val && root) {
+					root.style.setProperty(prop, val, 'important');
+				}
+			});
+			if (!showCalendar) {
+				var panelProps = props.concat(['box-shadow']);
+				panelProps.forEach(function (prop) {
+					var val = panelCs.getPropertyValue(prop);
+					if (val && root) {
+						root.style.setProperty(prop, val, 'important');
+					}
+				});
+			} else if (root) {
+				root.style.setProperty('padding', '0', 'important');
+			}
+		}
+	}
+
 	function translateMoreInfoButtonText(text) {
 		var normalized = (text || '').trim().toLowerCase();
 		if (!normalized || normalized === 'more info') {
@@ -71,10 +209,21 @@ jQuery(function ($) {
 		};
 		var order = orders[layoutType] || ['image', 'details'];
 		var layoutDefaults = defaults[layoutType] || { image: '4', details: '8' };
+		var includeImage = !(params && (params.show_feature_image === 'off' || params.show_feature_image === 'false' || params.show_feature_image === '0'));
+
+		if (!includeImage) {
+			order = order.filter(function (column) { return column !== 'image'; });
+			if ((layoutType === 'calloutOnImage_Datail' || layoutType === 'calloutOnImage_Datail_button') && order.indexOf('callout') === -1) {
+				order = ['callout'].concat(order);
+			}
+			if (!order.length) {
+				order = ['details'];
+			}
+		}
 
 		return order.map(function (column) {
 			var paramKey = 'list_' + column + '_column_width';
-			var fallback = layoutDefaults[column] || '4';
+			var fallback = layoutDefaults[column] || (column === 'callout' || column === 'button' ? '2' : (column === 'details' ? '8' : '4'));
 			var value = params && params[paramKey] !== undefined && params[paramKey] !== '' ? params[paramKey] : fallback;
 			return normalizeListLayoutColumnWidth(value, fallback) + 'fr';
 		}).join(' ');
@@ -266,6 +415,53 @@ jQuery(function ($) {
 	}
 
 	/**
+	 * Collect checked category IDs from the filter that was just used, write them
+	 * as a comma-separated list, then fetch events once.
+	 *
+	 * @param {jQuery} $source Checkbox or dropdown item that triggered the change.
+	 */
+	function decm_apply_category_filter($source) {
+		var selectedCategory = [];
+		var selectedCategoryId = [];
+		var $scope = $source.closest('.decm_event_filter_parent');
+		if (!$scope.length) {
+			$scope = $(document);
+		}
+
+		$scope.find("input[name='dec_filter_category']:checked").each(function () {
+			selectedCategory.push(' ' + this.value);
+			selectedCategoryId.push(this.id);
+			$(this).closest('.custom__li_filter').addClass('dec-filter-select');
+		});
+		$scope.find("input[name='dec_filter_category']:not(:checked)").each(function () {
+			$(this).closest('.custom__li_filter').removeClass('dec-filter-select');
+		});
+
+		if (selectedCategory.length > 0) {
+			findFilterElement('category').val(selectedCategoryId.join(','));
+			$('.event-category-filter-selection-list').html("<span class='event-category-filter-selection'>" + selectedCategory + '</span>');
+			$('#dec-event-current-select').html(': ' + selectedCategory);
+			$('#dec-event-current-select').parent().addClass('dec-filter-select');
+			$('.dec-category-remove').css({ display: 'initial' });
+		} else if ($source.is('.decm-filter-catrgory-list') && $.trim($source.text()) !== '') {
+			var text = $source.text();
+			var dataId = $source.data('id');
+			findFilterElement('category').val(dataId);
+			$('.event-category-filter-selection-list').html("<span class='event-category-filter-selection'>" + text + '</span>');
+			$('#dec-event-current-select').html(': ' + text);
+			$('#dec-event-current-select').parent().addClass('dec-filter-select');
+			$('.dec-category-remove').css({ display: 'initial' });
+		} else {
+			$('#dec-event-current-select').parent().removeClass('dec-filter-select');
+			$('.dec-category-remove').css({ display: 'none' });
+			$('#dec-event-current-select').html('');
+			findFilterElement('category').val('');
+		}
+
+		decm_get_event($source);
+	}
+
+	/**
 	 * Clear date-range values everywhere they are stored (feed hidden fields + globals).
 	 * @param {jQuery} [eventDisplayContainer] Optional connected Events Feed container.
 	 */
@@ -307,33 +503,20 @@ jQuery(function ($) {
 		$(this).addClass('dec-filter-select');
 		var dataId = $(this).data("id");
 		findFilterElement('category').val(dataId);
-		
-		// Trigger event fetch with pagination reset
-		let button_here = $(this);
-		decm_get_event(button_here);
+		decm_get_event($(this));
 	});
 
-
-	$('.custom__ul_boxes .custom__li_filter').on("click", function () {
-		$(this).removeClass('dec-filter-select');
-		$(this).addClass('dec-filter-select');
-		var dataId = $(this).data("id");
-		findFilterElement('category').val(dataId);
-		
-		// Trigger event fetch with pagination reset
-		let button_here = $(this);
-		decm_get_event(button_here);
-	});
-
-	$('.custom__input').change(function () {
-		var listItem = $(this).closest('div');
-
-		if ($(this).prop('checked')) {
-			('Checkbox is checked');
-			listItem.addClass('dec-filter-select');
-		} else {
-			('Checkbox is unchecked');
-			listItem.removeClass('dec-filter-select');
+	// Inline multi-select chips: do not fetch here. A click on the label bubbles to this
+	// div, then the browser synthesizes a checkbox click that bubbles back up — that
+	// used to fire three AJAX requests, and the last one overwrote all selected IDs
+	// with only the clicked chip.
+	$('.custom__ul_boxes .custom__li_filter').on('click', function (e) {
+		if ($(e.target).closest('label, input').length) {
+			return;
+		}
+		var $checkbox = $(this).find('input[name="dec_filter_category"]');
+		if ($checkbox.length) {
+			$checkbox.prop('checked', !$checkbox.prop('checked')).trigger('change');
 		}
 	});
 
@@ -368,9 +551,11 @@ jQuery(function ($) {
 		jQuery.each(container, function (key, value) {
 			if (!$(value).is(e.target)
 				&& $(value).has(e.target).length === 0) {
-				$(value).fadeOut();
+				$(value).fadeOut(decm_syncFilterDropdownStacking);
 			}
 		});
+
+		decm_syncFilterDropdownStacking();
 
 	});
 
@@ -473,9 +658,29 @@ jQuery(function ($) {
 				[Next_month]: [moment().add(1, 'month').startOf('month'), moment().add(1, 'month').endOf('month')]
 			}
 		});
+		decm_tagEventFilterDateRangePicker();
 	} else {
 		// console.warn('DateRangePicker library not loaded. Date range functionality will be limited.');
 	}
+
+	$('#reportrange').on('show.daterangepicker', function () {
+		decm_tagEventFilterDateRangePicker();
+	});
+
+	$('#reportrange').on('showCalendar.daterangepicker', function (_ev, picker) {
+		decm_tagEventFilterDateRangePicker();
+		if (picker) {
+			decm_syncDateRangeDropdownStyles(picker);
+		}
+	});
+
+	$('#reportrange').on('hideCalendar.daterangepicker', function (_ev, picker) {
+		if (picker) {
+			decm_syncDateRangeDropdownStyles(picker);
+		} else {
+			decm_tagEventFilterDateRangePicker();
+		}
+	});
 
 	jQuery('[data-range-key="Custom Range"]').text(Custom_range);
 
@@ -530,8 +735,11 @@ jQuery(function ($) {
 	}
 
 
-	// Stacking is handled in CSS (event-filter-parent/module.scss). Do not manipulate z-index here —
-	// inline JS changes broke filter selection after the dropdown stacking fix.
+	// Stacking is handled in CSS (event-filter-parent/module.scss + child-module/module.scss).
+	// loadFilter.js only toggles .dec-filter-dropdown-active — never inline z-index.
+	$(document).on('click', '.dec-filter-bar, .dec-filter-label', function () {
+		setTimeout(decm_syncFilterDropdownStacking, 0);
+	});
 
 	jQuery('input[name=\'dec_filter_organizer\'], .dec-organizer-list').on("click", function () {
 
@@ -584,40 +792,12 @@ jQuery(function ($) {
 		decm_run_keyword_search();
 	});
 
-	jQuery('input[name=\'dec_filter_category\'], .decm-filter-catrgory-list').on("click", function () {
+	jQuery("input[name='dec_filter_category']").on('change', function () {
+		decm_apply_category_filter($(this));
+	});
 
-		var selectedCategory = new Array();
-		var selectedCategoryId = new Array();
-		$(" input[name='dec_filter_category']:checked").each(function () {
-			selectedCategory.push(" " + this.value);
-			selectedCategoryId.push(this.id);
-		});
-
-		if (selectedCategory.length > 0) {
-			// Join category IDs with commas to create a comma-separated string
-			var categoryIdsString = selectedCategoryId.join(',');
-			findFilterElement('category').val(categoryIdsString);
-			$('.event-category-filter-selection-list').html("<span class='event-category-filter-selection'>" + selectedCategory + "</span>");
-			$('#dec-event-current-select').html(": " + selectedCategory);
-			$('#dec-event-current-select').parent().addClass("dec-filter-select");
-			$('.dec-category-remove').css({ "display": "initial" });
-		} else if (jQuery(this).text() != '') {
-			var text = jQuery(this).text();
-			var dataId = $(this).data("id");
-			findFilterElement('category').val(dataId);
-			$('.event-category-filter-selection-list').html("<span class='event-category-filter-selection'>" + text + "</span>");
-			$('#dec-event-current-select').html(": " + text);
-			$('#dec-event-current-select').parent().addClass("dec-filter-select");
-			$('.dec-category-remove').css({ "display": "initial" });
-		} else {
-			$('#dec-event-current-select').parent().removeClass("dec-filter-select");
-			$('.dec-category-remove').css({ "display": "none" });
-			$('#dec-event-current-select').html("");
-			findFilterElement('category').val("");
-		}
-		let button_here = $(this);
-		decm_get_event(button_here);
-		(jQuery(this).text());
+	jQuery('.decm-filter-catrgory-list').on('click', function () {
+		decm_apply_category_filter($(this));
 	});
 
 	jQuery('input[name=\'dec_filter_tag\'], .dec-tag-list').on("click", function () {
@@ -1253,6 +1433,8 @@ jQuery(function ($) {
 
 	jQuery('.dec-category-remove').on("click", function () {
 		$("input[name='dec_filter_category']").prop('checked', false);
+		$('.custom__li_filter').removeClass('dec-filter-select');
+		$('.dec-filter-event-inline li').removeClass('dec-filter-select');
 		$('#dec-event-current-select').html("");
 		findFilterElement('category').val("");
 		$('.event-category-filter-selection-list').html("");
@@ -1486,7 +1668,144 @@ jQuery(function ($) {
 		}
 		var fontClass = (iconFont === 'FontAwesome') ? 'dec-numeric-icon-font-fa' : 'dec-numeric-icon-font-et';
 		var posClass = position === 'first' ? 'dec-numeric-icon-first' : 'dec-numeric-icon-last';
-		return '<span class="dec-numeric-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + iconChar + '</span>';
+		return '<span class="dec-numeric-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + escapeHtml(iconChar) + '</span>';
+	}
+
+	function buildPagedPaginationIconSpan(iconChar, iconFont, position) {
+		if (!iconChar) {
+			return '';
+		}
+		var fontClass = (iconFont === 'FontAwesome') ? 'dec-paged-icon-font-fa' : 'dec-paged-icon-font-et';
+		var posClass = position === 'prev' ? 'dec-paged-icon-prev' : 'dec-paged-icon-next';
+		return '<span class="dec-paged-icon-inline ' + posClass + ' ' + fontClass + '" aria-hidden="true">' + escapeHtml(iconChar) + '</span>';
+	}
+
+	function findPagedPaginationHiddenFields($paginationContainer) {
+		var $hidden = $paginationContainer.siblings('.events-main__container').find('.hidden_feild');
+		if ($hidden.length) {
+			return $hidden;
+		}
+		$hidden = $paginationContainer.closest('.event_calendar_module__inner, .decm_event_display, [class*="event-display_"]').find('.hidden_feild').first();
+		return $hidden;
+	}
+
+	function normalizePagedButtonAlign(align, defaultAlign) {
+		var value = (align || '').toString().trim().toLowerCase();
+		if (value === 'left' || value === 'center' || value === 'right') {
+			return value;
+		}
+		return defaultAlign || 'left';
+	}
+
+	function getPagedPaginationAlignClasses(prevAlign, nextAlign, hasPrev, hasNext) {
+		var prev = normalizePagedButtonAlign(prevAlign, 'left');
+		var next = normalizePagedButtonAlign(nextAlign, 'right');
+		var classes = ['dec-paged-prev-align-' + prev, 'dec-paged-next-align-' + next];
+
+		if (hasPrev && hasNext) {
+			if (prev === next) {
+				classes.push('dec-paged-group-' + prev);
+			} else if (prev === 'left' && next === 'right') {
+				classes.push('dec-paged-split-lr');
+			} else if (prev === 'right' && next === 'left') {
+				classes.push('dec-paged-split-rl');
+			} else {
+				classes.push('dec-paged-split-mixed');
+			}
+		} else if (hasNext && !hasPrev) {
+			classes.push('dec-paged-single', 'dec-paged-single-next', 'dec-paged-single-' + next);
+		} else if (hasPrev && !hasNext) {
+			classes.push('dec-paged-single', 'dec-paged-single-prev', 'dec-paged-single-' + prev);
+		}
+
+		return classes.join(' ');
+	}
+
+	function getPagedPaginationLayoutMode(prevAlign, nextAlign, hasPrev, hasNext) {
+		var prev = normalizePagedButtonAlign(prevAlign, 'left');
+		var next = normalizePagedButtonAlign(nextAlign, 'right');
+
+		if (hasPrev && hasNext) {
+			if (prev === next) {
+				return 'group-' + prev;
+			}
+			if (prev === 'left' && next === 'right') {
+				return 'split-lr';
+			}
+			if (prev === 'right' && next === 'left') {
+				return 'split-rl';
+			}
+			return 'split-mixed';
+		}
+		if (hasNext && !hasPrev) {
+			return 'single-' + next;
+		}
+		if (hasPrev && !hasNext) {
+			return 'single-' + prev;
+		}
+		return 'empty';
+	}
+
+	function getPagedPaginationContainerStyle(prevAlign, nextAlign, hasPrev, hasNext) {
+		var mode = getPagedPaginationLayoutMode(prevAlign, nextAlign, hasPrev, hasNext);
+		var styles = ['width:100%', 'gap:1em', 'align-items:center', 'float:none', 'clear:both'];
+
+		switch (mode) {
+			case 'group-left':
+				styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:flex-start');
+				break;
+			case 'group-center':
+				styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:center');
+				break;
+			case 'group-right':
+				styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:flex-end');
+				break;
+			case 'split-lr':
+				styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:space-between');
+				break;
+			case 'split-rl':
+				styles.push('display:flex !important', 'flex-wrap:wrap', 'justify-content:space-between', 'flex-direction:row-reverse');
+				break;
+			case 'split-mixed':
+				styles.push('display:grid !important', 'grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)');
+				break;
+			case 'single-left':
+				styles.push('display:flex !important', 'justify-content:flex-start');
+				break;
+			case 'single-center':
+				styles.push('display:flex !important', 'justify-content:center');
+				break;
+			case 'single-right':
+				styles.push('display:flex !important', 'justify-content:flex-end');
+				break;
+			default:
+				break;
+		}
+
+		return styles.join(';');
+	}
+
+	function getPagedPaginationLinkStyle(align) {
+		var normalized = normalizePagedButtonAlign(align, 'left');
+		var col = normalized === 'left' ? '1' : (normalized === 'center' ? '2' : '3');
+		var self = normalized === 'left' ? 'start' : (normalized === 'center' ? 'center' : 'end');
+		return 'grid-column:' + col + ';grid-row:1;justify-self:' + self + ';float:none !important;clear:none !important;margin:0 !important;';
+	}
+
+	function getPagedPaginationLayoutAttributes(prevAlign, nextAlign, hasPrev, hasNext) {
+		var prev = normalizePagedButtonAlign(prevAlign, 'left');
+		var next = normalizePagedButtonAlign(nextAlign, 'right');
+		var mode = getPagedPaginationLayoutMode(prev, next, hasPrev, hasNext);
+		var baseLinkStyle = 'float:none !important;clear:none !important;margin:0 !important;';
+
+		return {
+			className: getPagedPaginationAlignClasses(prev, next, hasPrev, hasNext),
+			containerStyle: getPagedPaginationContainerStyle(prev, next, hasPrev, hasNext),
+			prevStyle: mode === 'split-mixed' && hasPrev ? getPagedPaginationLinkStyle(prev) : baseLinkStyle,
+			nextStyle: mode === 'split-mixed' && hasNext ? getPagedPaginationLinkStyle(next) : baseLinkStyle,
+			prevData: prev,
+			nextData: next
+		};
 	}
 
 	function escapeHtml(text) {
@@ -1537,18 +1856,112 @@ jQuery(function ($) {
 		return momentFormat;
 	}
 
+	function deriveShortenedStartMomentFormat(dateDetailsFormat, includeYear) {
+		var format = (dateDetailsFormat || '').trim() || 'F d, Y';
+		if (includeYear) {
+			if (format.indexOf('F') !== -1) {
+				return 'MMMM D, YYYY';
+			}
+			if (format.indexOf('M') !== -1) {
+				return 'MMM D, YYYY';
+			}
+			if (format.indexOf('m') !== -1) {
+				return 'MM/DD/YYYY';
+			}
+			return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '')) + ', YYYY';
+		}
+		if (format.indexOf('F') !== -1) {
+			return 'MMMM D';
+		}
+		if (format.indexOf('M') !== -1) {
+			return 'MMM D';
+		}
+		if (format.indexOf('m') !== -1) {
+			return 'M/D';
+		}
+		return phpToMomentFormat(format.replace(/,?\s*[Yy]/g, '') || 'M j');
+	}
+
 	function updatePagination(paginationData, params, $paginationContainer) {
+		// Respect Show Pagination across breakpoints (CSS hides per viewport).
+		var $hiddenRoot = $paginationContainer.siblings('.events-main__container').find('.hidden_feild');
+		var showPaginationRender = String(
+			(params && params.show_pagination_render) ||
+			$hiddenRoot.find('input[name="show_pagination_render"]').val() ||
+			''
+		).toLowerCase();
+		var showPagination = String(
+			(params && params.show_pagination) ||
+			$hiddenRoot.find('input[name="show_pagination"]').val() ||
+			''
+		).toLowerCase();
+		var anyOn = ['on', 'true', '1'].indexOf(showPaginationRender) !== -1
+			|| ['on', 'true', '1'].indexOf(showPagination) !== -1
+			|| ['on', 'true', '1'].indexOf(String((params && params.show_pagination_tablet) || $hiddenRoot.find('input[name="show_pagination_tablet"]').val() || '').toLowerCase()) !== -1
+			|| ['on', 'true', '1'].indexOf(String((params && params.show_pagination_phone) || $hiddenRoot.find('input[name="show_pagination_phone"]').val() || '').toLowerCase()) !== -1
+			|| ['on', 'true', '1'].indexOf(String((params && params.show_pagination_phone_wide) || $hiddenRoot.find('input[name="show_pagination_phone_wide"]').val() || '').toLowerCase()) !== -1
+			|| ['on', 'true', '1'].indexOf(String((params && params.show_pagination_tablet_wide) || $hiddenRoot.find('input[name="show_pagination_tablet_wide"]').val() || '').toLowerCase()) !== -1
+			|| ['on', 'true', '1'].indexOf(String((params && params.show_pagination_widescreen) || $hiddenRoot.find('input[name="show_pagination_widescreen"]').val() || '').toLowerCase()) !== -1
+			|| ['on', 'true', '1'].indexOf(String((params && params.show_pagination_ultra_wide) || $hiddenRoot.find('input[name="show_pagination_ultra_wide"]').val() || '').toLowerCase()) !== -1;
+		if (!anyOn) {
+			$paginationContainer.empty();
+			return;
+		}
+
+		// Always resolve Pagination Type for the current viewport (desktop/tablet/phone).
+		var typeParams = params ? Object.assign({}, params) : {};
+		var $typeHidden = $paginationContainer.siblings('.events-main__container').find('.hidden_feild');
+		$typeHidden.find('input.hidden-data-field').each(function () {
+			var name = $(this).attr('name');
+			if (!name) {
+				return;
+			}
+			var val = $(this).val() || '';
+			if (typeParams[name] === undefined || typeParams[name] === '') {
+				typeParams[name] = val;
+			}
+			if (name.indexOf('pagination_type') === 0) {
+				typeParams[name] = val;
+			}
+		});
+		var resolvedPaginationType;
+		if (window.decmEventDisplayResponsiveLayout && window.decmEventDisplayResponsiveLayout.getResponsivePaginationType) {
+			resolvedPaginationType = window.decmEventDisplayResponsiveLayout.getResponsivePaginationType(typeParams);
+		} else {
+			resolvedPaginationType = typeParams.pagination_type || paginationData.pagination_type || 'load_more';
+		}
+		paginationData = Object.assign({}, paginationData || {}, { pagination_type: resolvedPaginationType });
+		if (params) {
+			params.pagination_type = resolvedPaginationType;
+		}
+
 		var paginationHtml = '';
 		switch (paginationData.pagination_type) {
-			case 'paged':
+			case 'paged': {
+				const $hidden = findPagedPaginationHiddenFields($paginationContainer);
+				const prevIconChar = ($hidden.find('input[name="paged_prev_button_icon"]').val() || '').trim();
+				const prevIconFont = $hidden.find('input[name="paged_prev_button_icon_font"]').val() || 'ETmodules';
+				const nextIconChar = ($hidden.find('input[name="paged_next_button_icon"]').val() || '').trim();
+				const nextIconFont = $hidden.find('input[name="paged_next_button_icon_font"]').val() || 'ETmodules';
+				const prevIconClass = prevIconChar ? ' dec-paged-custom-icon dec-paged-inline-icon' : '';
+				const nextIconClass = nextIconChar ? ' dec-paged-custom-icon dec-paged-inline-icon' : '';
+				const prevIconSpan = buildPagedPaginationIconSpan(prevIconChar, prevIconFont, 'prev');
+				const nextIconSpan = buildPagedPaginationIconSpan(nextIconChar, nextIconFont, 'next');
+				const hasPrev = paginationData.current_page > 1;
+				const hasNext = paginationData.current_page < paginationData.total_pages;
+				const prevAlign = $hidden.find('input[name="paged_prev_button_align"]').val() || 'left';
+				const nextAlign = $hidden.find('input[name="paged_next_button_align"]').val() || 'right';
+				const pagedLayout = getPagedPaginationLayoutAttributes(prevAlign, nextAlign, hasPrev, hasNext);
+
 				paginationHtml = `
-                <div class="dec-pagination dec-prev-next">
-                    ${paginationData.current_page > 1 ?
-						`<a href="#" class="prev ecs-page_alignment_left" data-page="${paginationData.current_page - 1}">${__t(params.prv_link_btn)}</a>` : ''}
-                    ${paginationData.current_page < paginationData.total_pages ?
-						`<a href="#" class="next ecs-page_alignment_right" data-page="${paginationData.current_page + 1}">${__t(params.next_link_btn)}</a>` : ''}
+                <div class="dec-pagination dec-prev-next ${pagedLayout.className}" style="${pagedLayout.containerStyle}" data-paged-prev-align="${pagedLayout.prevData}" data-paged-next-align="${pagedLayout.nextData}">
+                    ${hasPrev ?
+						`<a href="#" class="prev${prevIconClass}" style="${pagedLayout.prevStyle}" data-page="${paginationData.current_page - 1}">${prevIconSpan}${__t(params.prv_link_btn)}</a>` : ''}
+                    ${hasNext ?
+						`<a href="#" class="next${nextIconClass}" style="${pagedLayout.nextStyle}" data-page="${paginationData.current_page + 1}">${__t(params.next_link_btn)}${nextIconSpan}</a>` : ''}
                 </div>`;
 				break;
+			}
 
 			case 'numeric_pagination': {
 				const total = Number(paginationData.total_pages) || 1;
@@ -1574,7 +1987,7 @@ jQuery(function ($) {
 
 				// "First" when not on first page
 				if (cur > 1) {
-					html += `<a href="#" data-page="1" class="dec-page-text-first dec-page-text-display ecs-page-numbers${firstIconClass}">${firstIconSpan}${firstIconChar ? '' : '« '}${firstText}</a>`;
+					html += `<a href="#" data-page="1" class="dec-page-text-first dec-page-text-display ecs-page-numbers${firstIconClass}">${firstIconSpan}<span class="dec-numeric-label">${firstIconChar ? '' : '« '}${firstText}</span></a>`;
 				}
 
 				const addPage = (p) => {
@@ -1602,7 +2015,7 @@ jQuery(function ($) {
 
 				// "Last" when not on last page
 				if (cur < total) {
-					html += `<a href="#" data-page="${total}" class="dec-page-text-last dec-page-text-display ecs-page-numbers${lastIconClass}">${lastText}${lastIconSpan}${lastIconChar ? '' : ' »'}</a>`;
+					html += `<a href="#" data-page="${total}" class="dec-page-text-last dec-page-text-display ecs-page-numbers${lastIconClass}"><span class="dec-numeric-label">${lastText}${lastIconChar ? '' : ' »'}</span>${lastIconSpan}</a>`;
 				}
 
 				html += '</div>';
@@ -1639,6 +2052,9 @@ jQuery(function ($) {
 
 		$paginationContainer.find('.dec-pagination').remove();
 		$paginationContainer.html(paginationHtml);
+		if (window.decmEventDisplayResponsiveLayout && typeof window.decmEventDisplayResponsiveLayout.applyPagedPaginationLayout === 'function') {
+			window.decmEventDisplayResponsiveLayout.applyPagedPaginationLayout($paginationContainer.find('.dec-pagination.dec-prev-next'));
+		}
 
 	}
 
@@ -1771,6 +2187,8 @@ jQuery(function ($) {
 			'show_more_info': '',
 			'show_more_info_btn_text': '',
 			'button_make_fullwidth': 'off',
+			'button_make_fullwidth_tablet': '',
+			'button_make_fullwidth_phone': '',
 			'button_align': '',
 			'button_align_tablet': '',
 			'button_align_phone': '',
@@ -1797,39 +2215,194 @@ jQuery(function ($) {
 			'callout_time_format': '',
 			'show_callout_time_range': '',
 			'show_date_details': '',
-			'show_end_date_details': '',
+			'show_date_details_tablet': '',
+			'show_date_details_phone': '',
+			'show_date_details_phone_wide': '',
+			'show_date_details_tablet_wide': '',
+			'show_date_details_widescreen': '',
+			'show_date_details_ultra_wide': '',
+			'show_date_details_render': 'off',
+			'show_end_date_details': 'on',
 			'date_detail_label': '',
+			'date_detail_label_tablet': '',
+			'date_detail_label_phone': '',
+			'date_detail_label_phone_wide': '',
+			'date_detail_label_tablet_wide': '',
+			'date_detail_label_widescreen': '',
+			'date_detail_label_ultra_wide': '',
 			'date_details_format': '',
+			'shorten_multidate': 'on',
+			'start_date_format': '',
 			'show_time_details': '',
+			'show_time_details_tablet': '',
+			'show_time_details_phone': '',
+			'show_time_details_phone_wide': '',
+			'show_time_details_tablet_wide': '',
+			'show_time_details_widescreen': '',
+			'show_time_details_ultra_wide': '',
+			'show_time_details_render': 'off',
 			'details_time_label': '',
+			'details_time_label_tablet': '',
+			'details_time_label_phone': '',
+			'details_time_label_phone_wide': '',
+			'details_time_label_tablet_wide': '',
+			'details_time_label_widescreen': '',
+			'details_time_label_ultra_wide': '',
 			'details_time_format': '',
 			'show_end_time_details': '',
 			'show_venue_details': '',
+			'show_venue_details_tablet': '',
+			'show_venue_details_phone': '',
+			'show_venue_details_phone_wide': '',
+			'show_venue_details_tablet_wide': '',
+			'show_venue_details_widescreen': '',
+			'show_venue_details_ultra_wide': '',
+			'show_venue_details_render': 'off',
 			'show_organizer_details': '',
+			'show_organizer_details_tablet': '',
+			'show_organizer_details_phone': '',
+			'show_organizer_details_phone_wide': '',
+			'show_organizer_details_tablet_wide': '',
+			'show_organizer_details_widescreen': '',
+			'show_organizer_details_ultra_wide': '',
+			'show_organizer_details_render': 'off',
+			'show_instructor_details': '',
+			'show_instructor_details_tablet': '',
+			'show_instructor_details_phone': '',
+			'show_instructor_details_phone_wide': '',
+			'show_instructor_details_tablet_wide': '',
+			'show_instructor_details_widescreen': '',
+			'show_instructor_details_ultra_wide': '',
+			'show_instructor_details_render': 'off',
 			'venue_detail_label': '',
+			'venue_detail_label_tablet': '',
+			'venue_detail_label_phone': '',
+			'venue_detail_label_phone_wide': '',
+			'venue_detail_label_tablet_wide': '',
+			'venue_detail_label_widescreen': '',
+			'venue_detail_label_ultra_wide': '',
 			'organizer_detail_label': '',
+			'organizer_detail_label_tablet': '',
+			'organizer_detail_label_phone': '',
+			'organizer_detail_label_phone_wide': '',
+			'organizer_detail_label_tablet_wide': '',
+			'organizer_detail_label_widescreen': '',
+			'organizer_detail_label_ultra_wide': '',
+			'instructor_detail_label': '',
+			'instructor_detail_label_tablet': '',
+			'instructor_detail_label_phone': '',
+			'instructor_detail_label_phone_wide': '',
+			'instructor_detail_label_tablet_wide': '',
+			'instructor_detail_label_widescreen': '',
+			'instructor_detail_label_ultra_wide': '',
 			'Show_purchase_now': '',
 			'show_place_left': '',
 			'show_rsvp': '',
+			'show_rsvp_tablet': '',
+			'show_rsvp_phone': '',
+			'show_rsvp_phone_wide': '',
+			'show_rsvp_tablet_wide': '',
+			'show_rsvp_widescreen': '',
+			'show_rsvp_ultra_wide': '',
+			'show_rsvp_render': 'off',
 			'rsvp_label': '',
+			'rsvp_label_tablet': '',
+			'rsvp_label_phone': '',
+			'rsvp_label_phone_wide': '',
+			'rsvp_label_tablet_wide': '',
+			'rsvp_label_widescreen': '',
+			'rsvp_label_ultra_wide': '',
 			'show_respond_now': '',
 			'show_cat': '',
+			'show_cat_tablet': '',
+			'show_cat_phone': '',
+			'show_cat_phone_wide': '',
+			'show_cat_tablet_wide': '',
+			'show_cat_widescreen': '',
+			'show_cat_ultra_wide': '',
+			'show_cat_render': 'off',
 			'cat_label': '',
+			'cat_label_tablet': '',
+			'cat_label_phone': '',
+			'cat_label_phone_wide': '',
+			'cat_label_tablet_wide': '',
+			'cat_label_widescreen': '',
+			'cat_label_ultra_wide': '',
 			'hide_coma_cat': '',
 			'show_tags': '',
+			'show_tags_tablet': '',
+			'show_tags_phone': '',
+			'show_tags_phone_wide': '',
+			'show_tags_tablet_wide': '',
+			'show_tags_widescreen': '',
+			'show_tags_ultra_wide': '',
+			'show_tags_render': 'off',
 			'tags_label': '',
+			'tags_label_tablet': '',
+			'tags_label_phone': '',
+			'tags_label_phone_wide': '',
+			'tags_label_tablet_wide': '',
+			'tags_label_widescreen': '',
+			'tags_label_ultra_wide': '',
 			'hide_coma_tag': '',
 			'show_website': '',
+			'show_website_tablet': '',
+			'show_website_phone': '',
+			'show_website_phone_wide': '',
+			'show_website_tablet_wide': '',
+			'show_website_widescreen': '',
+			'show_website_ultra_wide': '',
+			'show_website_render': 'off',
 			'website_label': '',
+			'website_label_tablet': '',
+			'website_label_phone': '',
+			'website_label_phone_wide': '',
+			'website_label_tablet_wide': '',
+			'website_label_widescreen': '',
+			'website_label_ultra_wide': '',
 			'show_preposition_dividr': '',
 			'show_callout_box_class': '',
-			'stack_event_d': '',
-			'show_label_icon': '',
+			'stack_event_d': 'on',
+			'show_label_icon': 'label_icon',
 			'stack_label_icon': '',
 			'show_price_ticket': '',
+			'show_price_ticket_tablet': '',
+			'show_price_ticket_phone': '',
+			'show_price_ticket_phone_wide': '',
+			'show_price_ticket_tablet_wide': '',
+			'show_price_ticket_widescreen': '',
+			'show_price_ticket_ultra_wide': '',
+			'show_price_ticket_render': 'off',
+			'price_ticket_label': '',
+			'price_ticket_label_tablet': '',
+			'price_ticket_label_phone': '',
+			'price_ticket_label_phone_wide': '',
+			'price_ticket_label_tablet_wide': '',
+			'price_ticket_label_widescreen': '',
+			'price_ticket_label_ultra_wide': '',
 			'show_price': '',
+			'show_price_tablet': '',
+			'show_price_phone': '',
+			'show_price_phone_wide': '',
+			'show_price_tablet_wide': '',
+			'show_price_widescreen': '',
+			'show_price_ultra_wide': '',
+			'show_price_render': 'off',
 			'price_detail_label': '',
+			'price_detail_label_tablet': '',
+			'price_detail_label_phone': '',
+			'price_detail_label_phone_wide': '',
+			'price_detail_label_tablet_wide': '',
+			'price_detail_label_widescreen': '',
+			'price_detail_label_ultra_wide': '',
 			'show_location': '',
+			'show_location_tablet': '',
+			'show_location_phone': '',
+			'show_location_phone_wide': '',
+			'show_location_tablet_wide': '',
+			'show_location_widescreen': '',
+			'show_location_ultra_wide': '',
+			'show_location_render': 'off',
 			'location_detail_label': '',
 			'location_street_address': '',
 			'location_locality': '',
@@ -1862,16 +2435,43 @@ jQuery(function ($) {
 			'list_details_column_width': '',
 			'list_button_column_width': '',
 			'pagination_type': '',
+			'pagination_type_tablet': '',
+			'pagination_type_phone': '',
+			'pagination_type_phone_wide': '',
+			'pagination_type_tablet_wide': '',
+			'pagination_type_widescreen': '',
+			'pagination_type_ultra_wide': '',
 			'prv_link_btn': 'Previous',
 			'next_link_btn': 'Next',
 			'load_more_text': 'Load More',
 			'excerpt_length': '27',
 			'show_excerpt': 'off',
+			'show_excerpt_tablet': '',
+			'show_excerpt_phone': '',
+			'show_excerpt_phone_wide': '',
+			'show_excerpt_tablet_wide': '',
+			'show_excerpt_widescreen': '',
+			'show_excerpt_ultra_wide': '',
+			'show_excerpt_render': 'off',
+			'excerpt_content': 'show_excerpt',
 			'show_pagination': 'off',
+			'show_pagination_tablet': '',
+			'show_pagination_phone': '',
+			'show_pagination_phone_wide': '',
+			'show_pagination_tablet_wide': '',
+			'show_pagination_widescreen': '',
+			'show_pagination_ultra_wide': '',
+			'show_pagination_render': 'off',
 			'page': '',
 			'per_page': '3',
 			'layout': 'grid',
+			'layout_desktop': '',
+			'layout_tablet': '',
+			'layout_phone': '',
 			'layout_type': '',
+			'layout_type_desktop': '',
+			'layout_type_tablet': '',
+			'layout_type_phone': '',
 			'show_callout_box_starttime': '',
 			'show_colon_label': '',
 			'show_timezone': 'off',
@@ -1928,7 +2528,6 @@ jQuery(function ($) {
 			'feature_image_overlay_icon_color': $(contss).find('input.hidden-data-field[name="feature_image_overlay_icon_color"]').val() || '#fff',
 			'feature_image_overlay_background': $(contss).find('input.hidden-data-field[name="feature_image_overlay_background"]').val() || 'rgba(0,0,0,0.4)',
 			'cover_feature_image_overlay_on': $(contss).find('input.hidden-data-field[name="cover_feature_image_overlay_on"]').val() || '',
-			'cover_image_overlay_color': $(contss).find('input.hidden-data-field[name="cover_image_overlay_color"]').val() || 'rgba(0,0,0,0.4)',
 		};
 
 		// Loop through each key and get the value from the hidden input field
@@ -2073,9 +2672,13 @@ jQuery(function ($) {
 		params['security'] = (typeof ajax_object !== 'undefined' && ajax_object.ajax_nonce) ? ajax_object.ajax_nonce : '';
 		// Reset pagination to page 1 when filters change
 		params['page'] = '1';
-		// Use responsive events_count for per_page
+		// Use the viewport events_count so phone/tablet filter results match the feed
+		params['events_count'] = getResponsiveEventsCount(params);
 		params['per_page'] = getResponsiveEventsCount(params);
-		if (params.layout == 'grid' || params.layout == 'cover') {
+		params['pagination_type'] = getResponsivePaginationType(params);
+		if (window.decmEventDisplayResponsiveLayout) {
+			window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+		} else if (params.layout == 'grid' || params.layout == 'cover') {
 			params.layout_type = '';
 		}
 		var data = params;
@@ -2187,6 +2790,58 @@ jQuery(function ($) {
 				// Desktop
 				return params.button_align;
 			}
+		}
+
+		// Same inherit as events_count: phone || tablet || desktop.
+		function getResponsiveToggle(params, key) {
+			var screenWidth = document.documentElement.clientWidth || window.innerWidth || screen.width;
+			var desktop = (params[key] !== undefined && params[key] !== null && params[key] !== '') ? params[key] : 'off';
+			var tablet = params[key + '_tablet'];
+			var phone = params[key + '_phone'];
+			var hasTablet = tablet !== '' && tablet !== undefined && tablet !== null;
+			var hasPhone = phone !== '' && phone !== undefined && phone !== null;
+
+			if (screenWidth <= 767) {
+				if (hasPhone) {
+					return phone;
+				}
+				if (hasTablet) {
+					return tablet;
+				}
+				return desktop;
+			}
+			if (screenWidth >= 768 && screenWidth <= 1024) {
+				return hasTablet ? tablet : desktop;
+			}
+			return desktop;
+		}
+
+		function getResponsivePaginationType(params) {
+			if (window.decmEventDisplayResponsiveLayout && window.decmEventDisplayResponsiveLayout.getResponsivePaginationType) {
+				return window.decmEventDisplayResponsiveLayout.getResponsivePaginationType(params);
+			}
+			var screenWidth = document.documentElement.clientWidth || window.innerWidth || screen.width;
+			var desktop = (params.pagination_type !== undefined && params.pagination_type !== null && params.pagination_type !== '')
+				? params.pagination_type
+				: 'load_more';
+			var tablet = params.pagination_type_tablet;
+			var phone = params.pagination_type_phone;
+			var hasTablet = tablet !== '' && tablet !== undefined && tablet !== null;
+			var hasPhone = phone !== '' && phone !== undefined && phone !== null;
+
+			if (screenWidth <= 767) {
+				if (hasPhone) {
+					return phone;
+				}
+				if (hasTablet) {
+					return tablet;
+				}
+				return desktop;
+			}
+			if (screenWidth >= 768 && screenWidth <= 1024) {
+				return hasTablet ? tablet : desktop;
+			}
+			return desktop;
 		}
 
 		// Function to get responsive events_count value
@@ -2311,6 +2966,11 @@ jQuery(function ($) {
 				var events = response.data.events;
 				var container = thiscontainer;
 
+				if (window.decmEventDisplayResponsiveLayout) {
+					window.decmEventDisplayResponsiveLayout.applyResponsiveLayoutParams(params);
+					window.decmEventDisplayResponsiveLayout.updateContainerLayoutClasses(container, params.layout, params);
+				}
+
 				// Re-retrieve organizer_detail_label from hidden fields before rendering (CRITICAL for pagination)
 				// This ensures the label value is always available even if params weren't set correctly
 				// console.log('=== Organizer Label Debug - Start of Success Callback ===');
@@ -2355,7 +3015,7 @@ jQuery(function ($) {
 				}
 				// console.log('=== End Organizer Label Debug ===');
 
-				if (response.data.pagination.pagination_type === 'load_more') {
+				if (params.pagination_type === 'load_more') {
 				} else {
 					container.empty();
 				}
@@ -2374,6 +3034,10 @@ jQuery(function ($) {
 									$('<span>', {
 										'class': 'month-heading ecs-events-calendar-list__month-separator-text',
 										'text': event.month_heading_format
+									}),
+									$('<span>', {
+										'class': 'ecs-events-list-separator-month__line',
+										'aria-hidden': 'true'
 									})
 								);
 								container.append($monthDiv);
@@ -2442,8 +3106,24 @@ jQuery(function ($) {
 					// -------------------------------
 					// Call out Date Details (PHP 'F d, Y')
 					var momentFormatDetails = phpToMomentFormat(params.date_details_format || 'F d, Y');
+					var shortenOn = params.shorten_multidate === 'on' || params.shorten_multidate === 'true';
+					var isMultidayDetails = parsedDate && parsedEndDate && parsedDate.isValid() && parsedEndDate.isValid() && !parsedDate.isSame(parsedEndDate, 'day');
 					var formattedDate_startDate_Details = fmt(parsedDate, momentFormatDetails) || (event.date || event.callout_start_date || '');
 					var formattedDate_endDate_Details = fmt(parsedEndDate, momentFormatDetails) || (event.callout_end_date || '');
+					if (shortenOn && isMultidayDetails) {
+						if (params.start_date_format) {
+							formattedDate_startDate_Details = fmt(parsedDate, phpToMomentFormat(params.start_date_format));
+						} else if (parsedDate.year() === parsedEndDate.year()) {
+							formattedDate_startDate_Details = fmt(parsedDate, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', false));
+						} else {
+							formattedDate_startDate_Details = fmt(parsedDate, deriveShortenedStartMomentFormat(params.date_details_format || 'F d, Y', true));
+						}
+						if (parsedDate.format('MMM YYYY') === parsedEndDate.format('MMM YYYY')) {
+							formattedDate_endDate_Details = fmt(parsedEndDate, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'D, YYYY');
+						} else {
+							formattedDate_endDate_Details = fmt(parsedEndDate, params.date_details_format ? phpToMomentFormat(params.date_details_format) : 'MMM D, YYYY');
+						}
+					}
 
 					// -------------------------------
 					// Call out Time Details (PHP 'g:i a')
@@ -2503,29 +3183,20 @@ jQuery(function ($) {
 
 					const buttonAlign = getResponsiveButtonAlign(params);
 					const buttonAlignEnabledClass = (buttonAlign === 'on') ? 'button-align-enabled' : '';
-					var coverBgStyle = '';
 					var coverOverlayOn = false;
 					var coverHasImageSrc = false;
 					if (params.layout === 'cover') {
 						coverOverlayOn = isCoverOverlayOn(params.cover_feature_image_overlay_on);
 						coverHasImageSrc = isFeatureImageOn(params.show_feature_image) && event.image &&
 							(event.image.match(/src=["']([^"']+)["']/) || event.image.match(/src=([^\s>]+)/));
-						if (!coverHasImageSrc && !coverOverlayOn && params.cover_image_overlay_color) {
-							coverBgStyle = ' style="background-color: ' + params.cover_image_overlay_color + '; background: ' + params.cover_image_overlay_color + ';"';
-						}
 					}
 					eventHtml += '<div class="event-container ' + layoutType + ' cs-col-' + columns + ' ' + buttonAlignEnabledClass + '" ' +
 						'data-columns-desktop="' + columnsDesktop + '" ' +
 						'data-columns-tablet="' + columnsTablet + '" ' +
-						'data-columns-phone="' + columnsPhone + '"' +
-						coverBgStyle + '>';
+						'data-columns-phone="' + columnsPhone + '">';
 					if (params.layout === 'cover') {
 						if (coverOverlayOn) {
-							var coverOverlayStyle = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2;';
-							if (params.cover_image_overlay_color) {
-								coverOverlayStyle = 'background:' + params.cover_image_overlay_color + '; ' + coverOverlayStyle;
-							}
-							eventHtml += '<div class="cover_overlayop" style="' + coverOverlayStyle + '"></div>';
+							eventHtml += '<div class="cover_overlayop"></div>';
 						}
 						if (coverHasImageSrc) {
 							if ((event.image || '').indexOf('tribe-events-event-image') !== -1) {
@@ -2552,8 +3223,12 @@ jQuery(function ($) {
 					}
 
 
-					// Callout Column (when separate)
-					if (['callout_image_detail', 'callout_image_detail_button', 'callout_detail_image', 'callout_detail_image_button'].includes(layoutType)) {
+					// Callout Column (when separate, or callout-on-image with featured image off in list)
+					var calloutOnImageLayout = layoutType === 'calloutOnImage_Datail' || layoutType === 'calloutOnImage_Datail_button';
+					var listFeatureImageOn = isFeatureImageOn(params.show_feature_image);
+					var showSeparateCallout = ['callout_image_detail', 'callout_image_detail_button', 'callout_detail_image', 'callout_detail_image_button'].includes(layoutType)
+						|| (params.layout === 'list' && !listFeatureImageOn && calloutOnImageLayout);
+					if (showSeparateCallout) {
 						if (params.show_callout_box === 'on') {
 							eventHtml += '<div class="callout-column seprate_col">';
 							eventHtml += '<div class="' + params.show_callout_box_class + ' ' + classClout + '">';
@@ -2651,15 +3326,15 @@ jQuery(function ($) {
 						}
 					}
 
-					// Image Column
-					(event.event_url)
+					// Image Column — omitted in list when featured image is off
+					if (params.layout !== 'list' || listFeatureImageOn) {
 					const imageColumnClass = layoutType.includes('calloutOnImage') ? 'with-callout-overlay' : 'image-only';
 					eventHtml += '<div class="image-column ' + imageColumnClass + '">';
 					// Check if image has src attribute for grid and list layouts only
 					const hasImageSrc = event.image && (event.image.match(/src=["']([^"']+)["']/) || event.image.match(/src=([^\s>]+)/));
 					const isGridOrList = params.layout === 'grid' || params.layout === 'list';
 					const hasImage = event.image && isFeatureImageOn(params.show_feature_image) && (isGridOrList ? hasImageSrc : true);
-					const imageAlignClass = hasImage ? 'image-align ' : '';
+					const imageAlignClass = (hasImage && params.layout !== 'cover') ? 'image-align ' : '';
 					eventHtml += '<div class="' + imageAlignClass + 'img-width decm-show-image-left imge_callout">';
 					const imageLink = getEventImageLink(event, params);
 					if (imageLink.showLink && hasImage) {
@@ -2819,8 +3494,12 @@ jQuery(function ($) {
 					} else {
 						if (params.layout === 'grid' || params.layout == 'cover') {
 							if (params.show_callout_box === 'on') {
-								eventHtml += '<div class="callout-column">';
-								eventHtml += '<div class="' + params.show_callout_box_class + ' ' + classClout + '">';
+								if (params.layout === 'cover') {
+									eventHtml += '<div class="' + params.show_callout_box_class + ' ' + classClout + '">';
+								} else {
+									eventHtml += '<div class="callout-column">';
+									eventHtml += '<div class="' + params.show_callout_box_class + ' ' + classClout + '">';
+								}
 
 								// Date
 								if (params.show_callout_box_date === 'on') {
@@ -2911,7 +3590,7 @@ jQuery(function ($) {
 								eventHtml += '</span>';
 							}
 
-								eventHtml += '</div></div>';
+								eventHtml += params.layout === 'cover' ? '</div>' : '</div></div>';
 							}
 						}
 					}
@@ -2920,6 +3599,7 @@ jQuery(function ($) {
 						eventHtml += '</a>';
 					}
 					eventHtml += '</div></div>';
+					} // end list featured-image / non-list image column
 
 					// Details Column
 					const detailsClass = layoutType.includes('_button') ? 'with-button' : '';
@@ -2946,7 +3626,7 @@ jQuery(function ($) {
 					}
 
 					// Date Details
-					if (params.show_date_details === "on" && formattedDate_startDate_Details) {
+					if (isDetailsToggleRenderOn(params, 'show_date_details') && formattedDate_startDate_Details) {
 						if (params.stack_event_d === 'off') {
 							eventHtml += '<span class="event__date_value">' + ' ';
 							if (isAllDay) {
@@ -2963,8 +3643,9 @@ jQuery(function ($) {
 						} else {
 							eventHtml += '<div class="event__date ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (params.show_label_icon || '') + '">';
 							eventHtml += '<div class="label-icon-line">';
-							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon' || params.show_label_icon !== 'none') {
-								const dateLabel = (params.date_detail_label === '' || params.date_detail_label === 'Date') ? 'Date' : params.date_detail_label;
+							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
+								const dateLabelRaw = getDetailsResponsiveLabel(params, 'date_detail_label', 'Date');
+								const dateLabel = (dateLabelRaw === '' || dateLabelRaw === 'Date') ? 'Date' : dateLabelRaw;
 								eventHtml += '<span class="event__date_label ecs-detail-label">' + __t(dateLabel) + (params.show_colon_label === 'on' ? ': ' : ' ') + '</span>';
 							}
 							eventHtml += '</div>';
@@ -2985,7 +3666,7 @@ jQuery(function ($) {
 					}
 
 					// Time Details
-					if (params.show_time_details === 'on' && (formattedDate_startTimeDetails || isAllDay)) {
+					if (isDetailsToggleRenderOn(params, 'show_time_details') && (formattedDate_startTimeDetails || isAllDay)) {
 						if (params.stack_event_d === 'off') {
 							eventHtml += '<span class="event__time_value">' + ' ';
 							if (isAllDay || (!formattedDate_startTimeDetails && !formattedDate_endTimeDetails)) {
@@ -3002,15 +3683,14 @@ jQuery(function ($) {
 							eventHtml += '</span>';
 						} else {
 							var timeIconClass = (params.show_label_icon === 'icon' || params.show_label_icon === 'label_icon') ? 'event-time-decm-icon' : '';
-							eventHtml += '<div class="event__time ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (!isAllDay ? (params.show_label_icon || '') : '') + ' ' + (!isAllDay ? timeIconClass : '') + '">';
-							if (!isAllDay) {
-								eventHtml += '<div class="label-icon-line">';
-								if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon' || params.show_label_icon !== 'none') {
-									const timeLabel = (params.details_time_label === '' || params.details_time_label === 'Time') ? 'Time' : params.details_time_label;
-									eventHtml += '<span class="event__time_label ecs-detail-label">' + __t(timeLabel) + (params.show_colon_label === 'on' ? ': ' : ' ') + '</span>';
-								}
-								eventHtml += '</div>';
+							eventHtml += '<div class="event__time ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (params.show_label_icon || '') + ' ' + timeIconClass + '">';
+							eventHtml += '<div class="label-icon-line">';
+							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
+								const timeLabelRaw = getDetailsResponsiveLabel(params, 'details_time_label', 'Time');
+								const timeLabel = (timeLabelRaw === '' || timeLabelRaw === 'Time') ? 'Time' : timeLabelRaw;
+								eventHtml += '<span class="event__time_label ecs-detail-label">' + __t(timeLabel) + (params.show_colon_label === 'on' ? ': ' : ' ') + '</span>';
 							}
+							eventHtml += '</div>';
 							eventHtml += '<span class="event__time_value">' + ' ';
 							if (isAllDay || (!formattedDate_startTimeDetails && !formattedDate_endTimeDetails)) {
 								eventHtml += allDayText;
@@ -3029,7 +3709,7 @@ jQuery(function ($) {
 					}
 
 					// Venue Details
-					if (params.show_venue_details === "on" && event.venues && event.venues.length > 0) {
+					if (isDetailsToggleRenderOn(params, 'show_venue_details') && event.venues && event.venues.length > 0) {
 						// Process venues with links
 						let venueContent = '';
 						const venueNames = [];
@@ -3055,7 +3735,8 @@ jQuery(function ($) {
 							eventHtml += '<div class="event__venue ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (params.show_label_icon || '') + '">';
 							eventHtml += '<div class="label-icon-line">';
 							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
-								const venueLabel = (params.venue_detail_label === '' || params.venue_detail_label === 'Venue') ? 'Venue' : params.venue_detail_label;
+								const venueLabelRaw = getDetailsResponsiveLabel(params, 'venue_detail_label', 'Venue');
+								const venueLabel = (venueLabelRaw === '' || venueLabelRaw === 'Venue') ? 'Venue' : venueLabelRaw;
 								const label = __t(venueLabel);
 								const sep = params.show_colon_label === 'on' ? ':&nbsp;' : '&nbsp;';
 								eventHtml += `<span class="event__venue_label ecs-detail-label">${label}${sep}</span>`;
@@ -3068,7 +3749,7 @@ jQuery(function ($) {
 					}
 
 					// location
-					if (params.show_location === "on" && event.location) {
+					if (isDetailsToggleRenderOn(params, 'show_location') && event.location) {
 						if (params.stack_event_d === 'off') {
 							eventHtml += '<span class="event__location_value"><em>' +
 								(params.show_preposition_dividr === 'on' ? ' in ' : '') + '</em>' +
@@ -3079,11 +3760,10 @@ jQuery(function ($) {
 								(params.show_label_icon || '') + '">';
 							eventHtml += '<div class="label-icon-line">';
 							if (
-								params.show_label_icon === 'label' ||
-								params.show_label_icon === 'label_icon' ||
-								params.show_label_icon !== 'none'
+								params.show_label_icon === 'label' || params.show_label_icon === 'label_icon'
 							) {
-								const locationLabel = (params.location_detail_label === '' || params.location_detail_label === 'Location' || params.location_detail_label === 'location') ? 'Location' : params.location_detail_label;
+								const locationLabelRaw = getDetailsResponsiveLabel(params, 'location_detail_label', 'Location');
+								const locationLabel = (locationLabelRaw === '' || locationLabelRaw === 'Location' || locationLabelRaw === 'location') ? 'Location' : locationLabelRaw;
 								const label = __t(locationLabel);
 								const sep = params.show_colon_label === 'on' ? ':&nbsp;' : '&nbsp;';
 								eventHtml += `<span class="event__location_label ecs-detail-label">${label}${sep}</span>`;
@@ -3098,7 +3778,7 @@ jQuery(function ($) {
 
 
 					// Organizer Details
-					if (params.show_organizer_details === "on" && event.organizers && event.organizers.length > 0) {
+					if (isDetailsToggleRenderOn(params, 'show_organizer_details') && event.organizers && event.organizers.length > 0) {
 						// Process organizers with links
 						let organizerContent = '';
 						const organizerLinks = [];
@@ -3122,7 +3802,7 @@ jQuery(function ($) {
 							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
 								// Get organizer label from params (already set at start of success callback)
 								// Always default to 'Organizer' if value is missing/empty (final safety check)
-								let organizerLabel = params.organizer_detail_label;
+								let organizerLabel = getDetailsResponsiveLabel(params, 'organizer_detail_label', '');
 								// console.log('=== Organizer Label Rendering Debug ===');
 								// console.log('params.show_label_icon:', params.show_label_icon);
 								// console.log('params.organizer_detail_label before check:', organizerLabel);
@@ -3154,7 +3834,7 @@ jQuery(function ($) {
 						}
 					}
 					// Category
-					if (params.show_cat === "on" && event.categories && event.categories.length > 0) {
+					if (isDetailsToggleRenderOn(params, 'show_cat') && event.categories && event.categories.length > 0) {
 						const categoryLinks = [];
 						const categoryNames = [];
 
@@ -3185,7 +3865,8 @@ jQuery(function ($) {
 								(params.show_label_icon || '') + '">';
 							eventHtml += '<div class="label-icon-line">';
 							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
-								const catLabel = (params.cat_label === '' || params.cat_label === 'Category') ? 'Category' : params.cat_label;
+								const catLabelRaw = getDetailsResponsiveLabel(params, 'cat_label', 'Category');
+								const catLabel = (catLabelRaw === '' || catLabelRaw === 'Category') ? 'Category' : catLabelRaw;
 								const label = __t(catLabel);
 								const sep = params.show_colon_label === 'on' ? ':&nbsp;' : '&nbsp;';
 								eventHtml += `<span class="event__category_label ecs-detail-label">${label}${sep}</span>`;
@@ -3200,7 +3881,7 @@ jQuery(function ($) {
 					}
 
 					// Tags
-					if (params.show_tags === "on" && event.tags && event.tags.length > 0) {
+					if (isDetailsToggleRenderOn(params, 'show_tags') && event.tags && event.tags.length > 0) {
 						const tagLinks = [];
 						const tagNames = [];
 
@@ -3231,7 +3912,8 @@ jQuery(function ($) {
 								(params.show_label_icon || '') + '">';
 							eventHtml += '<div class="label-icon-line">';
 							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
-								const tagsLabel = (params.tags_label === '' || params.tags_label === 'Tags') ? 'Tag' : params.tags_label;
+								const tagsLabelRaw = getDetailsResponsiveLabel(params, 'tags_label', 'Tag');
+								const tagsLabel = (tagsLabelRaw === '' || tagsLabelRaw === 'Tags') ? 'Tag' : tagsLabelRaw;
 								const label = __t(tagsLabel);
 								const sep = params.show_colon_label === 'on' ? ':&nbsp;' : '&nbsp;';
 								eventHtml += `<span class="event__tag_label ecs-detail-label">${label}${sep}</span>`;
@@ -3246,14 +3928,15 @@ jQuery(function ($) {
 					}
 
 					// Ticket
-					if (params.show_price_ticket === "on" && event.ticket) {
+					if (isDetailsToggleRenderOn(params, 'show_price_ticket') && event.ticket) {
 						if (params.stack_event_d === 'off') {
 							eventHtml += '<span class="event__ticket_value">' + ' ' + event.ticket + '</span>';
 						} else {
 							eventHtml += '<div class="event__ticket ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (params.show_label_icon || '') + '">';
 							eventHtml += '<div class="label-icon-line">';
-							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon' || params.show_label_icon !== 'none') {
-								const ticketLabel = (!params.price_ticket_label || params.price_ticket_label === '' || params.price_ticket_label === 'Ticket') ? 'Ticket' : params.price_ticket_label;
+							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
+								const ticketLabelRaw = getDetailsResponsiveLabel(params, 'price_ticket_label', 'Ticket');
+								const ticketLabel = (!ticketLabelRaw || ticketLabelRaw === '' || ticketLabelRaw === 'Ticket') ? 'Ticket' : ticketLabelRaw;
 								eventHtml += '<span class="event__ticket_label ecs-detail-label">' + __t(ticketLabel) + (params.show_colon_label === 'on' ? ': ' : ' ') + '</span>';
 							}
 							eventHtml += '</div>';
@@ -3263,14 +3946,15 @@ jQuery(function ($) {
 					}
 
 					// RSVP
-					if (params.show_rsvp === "on" && event.rsvp) {
+					if (isDetailsToggleRenderOn(params, 'show_rsvp') && event.rsvp) {
 						if (params.stack_event_d === 'off') {
 							eventHtml += '<span class="event__rsvp_value">' + ' ' + event.rsvp + '</span>';
 						} else {
 							eventHtml += '<div class="event__rsvp ' + (params.show_label_icon || '') + ' ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (params.show_label_icon || '') + '">';
 							eventHtml += '<div class="label-icon-line">';
-							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon' || params.show_label_icon !== 'none') {
-								const rsvpLabel = (params.rsvp_label === '' || params.rsvp_label === 'RSVP') ? 'RSVP' : params.rsvp_label;
+							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
+								const rsvpLabelRaw = getDetailsResponsiveLabel(params, 'rsvp_label', 'RSVP');
+								const rsvpLabel = (rsvpLabelRaw === '' || rsvpLabelRaw === 'RSVP') ? 'RSVP' : rsvpLabelRaw;
 								eventHtml += '<span class="event__rsvp_label ecs-detail-label">' + __t(rsvpLabel) + (params.show_colon_label === 'on' ? ': ' : ' ') + '</span>';
 							}
 							eventHtml += '</div>';
@@ -3280,14 +3964,15 @@ jQuery(function ($) {
 					}
 
 					// Price
-					if (params.show_price === "on" && event.price) {
+					if (isDetailsToggleRenderOn(params, "show_price") && event.price) {
 						if (params.stack_event_d === 'off') {
 							eventHtml += '<span class="event__price_value">' + ' ' + event.price + '</span>';
 						} else {
 							eventHtml += '<div class="event__price ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (params.show_label_icon || '') + '">';
 							eventHtml += '<div class="label-icon-line">';
-							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon' || params.show_label_icon !== 'none') {
-								const priceLabel = (!params.price_detail_label || params.price_detail_label === '' || params.price_detail_label === 'Price') ? 'Price' : params.price_detail_label;
+							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
+								const priceLabelRaw = getDetailsResponsiveLabel(params, 'price_detail_label', 'Price');
+								const priceLabel = (!priceLabelRaw || priceLabelRaw === '' || priceLabelRaw === 'Price') ? 'Price' : priceLabelRaw;
 								eventHtml += '<span class="event__price_label ecs-detail-label">' + __t(priceLabel) + (params.show_colon_label === 'on' ? ': ' : ' ') + '</span>';
 							}
 							eventHtml += '</div>';
@@ -3297,7 +3982,7 @@ jQuery(function ($) {
 					}
 
 					// Website
-					if (params.show_website === "on" && event.event_website) {
+					if (isDetailsToggleRenderOn(params, 'show_website') && event.event_website) {
 						var websiteTarget = getWebsiteLinkTarget(params);
 						var websiteText = getWebsiteLinkText(event, params);
 						if (params.stack_event_d === 'off') {
@@ -3306,7 +3991,8 @@ jQuery(function ($) {
 							eventHtml += '<div class="event__website ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (params.show_label_icon || '') + '">';
 							eventHtml += '<div class="label-icon-line">';
 							if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
-								const websiteLabel = (params.website_label === '' || params.website_label === 'Website') ? 'Website' : params.website_label;
+								const websiteLabelRaw = getDetailsResponsiveLabel(params, 'website_label', 'Website');
+								const websiteLabel = (websiteLabelRaw === '' || websiteLabelRaw === 'Website') ? 'Website' : websiteLabelRaw;
 								const label = __t(websiteLabel);
 								const sep = params.show_colon_label === 'on' ? ':&nbsp;' : '&nbsp;';
 								eventHtml += `<span class="event__website_label ecs-detail-label">${label}${sep}</span>`;
@@ -3320,7 +4006,7 @@ jQuery(function ($) {
 					}
 
 					// TEC Pro Additional Fields
-					if (Array.isArray(event.additional_fields) && event.additional_fields.length) {
+					if (params.show_additional_fields !== 'off' && Array.isArray(event.additional_fields) && event.additional_fields.length) {
 						var afSettings = {};
 						try {
 							if (params.additional_field_settings) {
@@ -3349,7 +4035,9 @@ jQuery(function ($) {
 								customIconChar = iconTextarea.value;
 							}
 							var hasCustomIcon = showIcons && !!customIconChar;
-							var iconFontClass = (setting.icon && setting.icon.type === 'fa') ? 'decm-af-icon-font-fa' : 'decm-af-icon-font-et';
+							var iconStyle = decmGetAdditionalFieldIconStyle(setting.icon);
+							var iconFontClass = iconStyle.className;
+							var iconFontFamily = iconStyle.family;
 
 							if (params.stack_event_d === 'off') {
 								eventHtml += '<span class="event__additional_field_value event__additional_field_value--' + slug + '">' + displayValue + '</span>';
@@ -3358,7 +4046,7 @@ jQuery(function ($) {
 								var customIconClass = hasCustomIcon ? ' has-custom-icon' : '';
 								eventHtml += '<div class="event__additional_field event__additional_field--' + slug + ' ' + (params.stack_label_icon === 'on' ? 'stacked' : '') + ' ' + (params.show_label_icon || '') + additionalIconClass + customIconClass + '">';
 								if (hasCustomIcon) {
-									eventHtml += '<span class="decm-additional-field-custom-icon ' + iconFontClass + '" aria-hidden="true">' + customIconChar + '</span>';
+									eventHtml += '<span class="decm-additional-field-custom-icon ' + iconFontClass + '" style="font-family:' + iconFontFamily + ';font-weight:' + iconStyle.weight + ';" aria-hidden="true">' + customIconChar + '</span>';
 								}
 								if (params.show_label_icon === 'label' || params.show_label_icon === 'label_icon') {
 									const labelSuffix = params.show_colon_label === 'on' ? ':' : '';
@@ -3374,11 +4062,17 @@ jQuery(function ($) {
 						eventHtml += '</div>';
 					}
 
-					// Event description excerpt
-					if (params.show_excerpt === 'on') {
+					// Event description excerpt (include HTML when any breakpoint shows it; CSS hides the rest)
+					if (params.show_excerpt_render === 'on' || params.show_excerpt === 'on' || params.show_excerpt_tablet === 'on' || params.show_excerpt_phone === 'on' || params.show_excerpt_phone_wide === 'on' || params.show_excerpt_tablet_wide === 'on' || params.show_excerpt_widescreen === 'on' || params.show_excerpt_ultra_wide === 'on') {
 						let t = '';
-						if (params.excerpt_content === 'show_desc' && event.post_description) {
-							t = event.post_description;
+						let keepHtml = false;
+						if ((params.excerpt_content === 'show_desc' || params.excerpt_content === '_show' || params.excerpt_content === 'show_description' || params.excerpt_content === 'description') && (event.post_description || event.content)) {
+							// D4 parity: keep safe HTML (paragraphs/breaks); only strip Divi shortcode tags.
+							t = String(event.post_description || event.content).replace(/\[\/?et_pb[\s\S]*?\]/gi, '');
+							if (!/<(p|div|br|li|h[1-6]|ul|ol|blockquote)\b/i.test(t)) {
+								t = t.replace(/\r\n|\r|\n/g, '<br>');
+							}
+							keepHtml = true;
 						} else if (event.post_excerpt) {
 							t = event.post_excerpt;
 						}
@@ -3386,7 +4080,9 @@ jQuery(function ($) {
 							t = t.substring(0, params.excerpt_length) + '...';
 						}
 						if (t) {
-							eventHtml += '<div class="event__des_excer"><p class="ecs-excerpt">' + t + '</p></div>';
+							eventHtml += keepHtml
+								? '<div class="event__des_excer"><div class="ecs-excerpt">' + t + '</div></div>'
+								: '<div class="event__des_excer"><p class="ecs-excerpt">' + t + '</p></div>';
 						}
 					}
 
@@ -3395,6 +4091,9 @@ jQuery(function ($) {
 						// Check for custom meta field first, then fall back to module setting
 						const buttonText = event.more_info_button_text || translateMoreInfoButtonText(params.show_more_info_btn_text);
 						const buttonAlignClass = (buttonAlign === 'on') ? 'button-align-bottom' : '';
+						var moreInfoFullwidthOn = getResponsiveToggle(params, 'button_make_fullwidth') === 'on';
+						var moreInfoFullwidthClass = moreInfoFullwidthOn ? ' dec-button-item-fullwidth' : '';
+						var moreInfoFullwidthBtnClass = moreInfoFullwidthOn ? ' act-view-more-fullwidth' : '';
 						if ([
 							'image_detail',
 							'detail_image',
@@ -3403,7 +4102,7 @@ jQuery(function ($) {
 							'callout_image_detail'
 						].includes(layoutType)) {
 							eventHtml += '<div class="event__show_more_if ' + buttonAlignClass + '" data-button-align-desktop="' + (params.button_align || 'off') + '" data-button-align-tablet="' + (params.button_align_tablet || '') + '" data-button-align-phone="' + (params.button_align_phone || '') + '">';
-							eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper mb-2 ' + buttonAlignClass + '">';
+							eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper mb-2 ' + buttonAlignClass + moreInfoFullwidthClass + '">';
 							const buttonLink = getEventButtonLink(event, params);
 							// Build icon data attributes
 							let iconDataAttrs = '';
@@ -3416,7 +4115,7 @@ jQuery(function ($) {
 							if (params.more_info_button_icon_phone) {
 								iconDataAttrs += ' data-icon-phone="' + escapeHtml(params.more_info_button_icon_phone) + '"';
 							}
-							var moreInfoBtnClass = 'act-view-more et_pb_button' + (params.button_make_fullwidth === 'on' ? ' act-view-more-fullwidth' : '') + getButtonIconClassSuffix(params, 'more_info');
+							var moreInfoBtnClass = 'act-view-more et_pb_button' + moreInfoFullwidthBtnClass + getButtonIconClassSuffix(params, 'more_info');
 							if (buttonLink.showLink) {
 								eventHtml += '<a href="' + buttonLink.url + '" rel="bookmark" class="' + moreInfoBtnClass + '"' + buttonLink.target + iconDataAttrs + '>' +
 									buttonText + '</a>';
@@ -3427,7 +4126,7 @@ jQuery(function ($) {
 						} else {
 							if (params.layout === 'grid' || params.layout == 'cover') {
 								eventHtml += '<div class="event__show_more_if ' + buttonAlignClass + '" data-button-align-desktop="' + (params.button_align || 'off') + '" data-button-align-tablet="' + (params.button_align_tablet || '') + '" data-button-align-phone="' + (params.button_align_phone || '') + '">';
-								eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper mb-2 ' + buttonAlignClass + '">';
+								eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper mb-2 ' + buttonAlignClass + moreInfoFullwidthClass + '">';
 								const buttonLink = getEventButtonLink(event, params);
 								// Build icon data attributes
 								let iconDataAttrs = '';
@@ -3440,7 +4139,7 @@ jQuery(function ($) {
 								if (params.more_info_button_icon_phone) {
 									iconDataAttrs += ' data-icon-phone="' + escapeHtml(params.more_info_button_icon_phone) + '"';
 								}
-								var moreInfoBtnClassGrid = 'act-view-more et_pb_button' + (params.button_make_fullwidth === 'on' ? ' act-view-more-fullwidth' : '') + getButtonIconClassSuffix(params, 'more_info');
+								var moreInfoBtnClassGrid = 'act-view-more et_pb_button' + moreInfoFullwidthBtnClass + getButtonIconClassSuffix(params, 'more_info');
 								if (buttonLink.showLink) {
 									eventHtml += '<a href="' + buttonLink.url + '" rel="bookmark" class="' + moreInfoBtnClassGrid + '"' + buttonLink.target + iconDataAttrs + '>' +
 										buttonText + '</a>';
@@ -3477,9 +4176,9 @@ jQuery(function ($) {
 						var buttonAlignEnabledClassButton = (buttonAlign === 'on') ? 'button-align-enabled' : '';
 						eventHtml += '<div class="button-column ' + buttonAlignEnabledClassButton + '">';
 						eventHtml += '<div class="event__show_more_if ' + buttonAlignClass + '" data-button-align-desktop="' + (params.button_align || 'off') + '" data-button-align-tablet="' + (params.button_align_tablet || '') + '" data-button-align-phone="' + (params.button_align_phone || '') + '">';
-						eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper ' + buttonAlignClass + '">';
+						eventHtml += '<div class="ecs-showdetail dec-more-info-button et_pb_button_wrapper ' + buttonAlignClass + moreInfoFullwidthClass + '">';
 						const buttonLink = getEventButtonLink(event, params);
-						var moreInfoBtnClassSep = 'act-view-more et_pb_button' + (params.button_make_fullwidth === 'on' ? ' act-view-more-fullwidth' : '') + getButtonIconClassSuffix(params, 'more_info');
+						var moreInfoBtnClassSep = 'act-view-more et_pb_button' + moreInfoFullwidthBtnClass + getButtonIconClassSuffix(params, 'more_info');
 						if (buttonLink.showLink) {
 							eventHtml += '<a href="' + buttonLink.url + '" rel="bookmark" class="' + moreInfoBtnClassSep + '"' + buttonLink.target + iconDataAttrsSeparate + '>' +
 								buttonText + '</a>';
