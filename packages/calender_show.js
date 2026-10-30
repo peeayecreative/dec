@@ -783,32 +783,70 @@ function decmApplyDaysOfWeekDesign($calendarMount, myAjax) {
   if (!$headers.length) {
     $headers = $calendarMount.find('th.fc-col-header-cell');
   }
-  var headerColor = myAjax.week_font_color || '#2C3E50';
+  // Only apply Design values — never force hardcoded brand colors/borders that block Design.
   if ($headers.length) {
     if (myAjax.week_background_color) {
       decmSetCssImportant($headers, { 'background-color': myAjax.week_background_color });
     }
-    decmSetCssImportant($headers.add($headers.find('span, a')), {
-      color: headerColor,
-      'text-transform': 'none'
-    });
+    var headerProps = { 'text-transform': 'none' };
+    if (myAjax.week_font_color) {
+      headerProps.color = myAjax.week_font_color;
+    }
+    decmSetCssImportant($headers.add($headers.find('span, a')), headerProps);
+    var borderProps = {};
+    if (myAjax.week_border_width) {
+      borderProps['border-width'] = myAjax.week_border_width;
+      borderProps['border-style'] = 'solid';
+    }
+    if (myAjax.week_border_color) {
+      borderProps['border-color'] = myAjax.week_border_color;
+      borderProps['border-style'] = 'solid';
+    }
+    if (Object.keys(borderProps).length) {
+      decmSetCssImportant($headers, borderProps);
+    }
   }
 
   var $listHeadings = $calendarMount.find('.fc-list-heading td, .fc-list-heading-main, .fc-list-heading-alt, a.fc-list-heading-main, a.fc-list-heading-alt, .fc-list-day-text, .fc-list-day-side-text, .fc-list-day-cushion');
-  var listHeadingColor = myAjax.week_font_color || '#2C3E50';
-  if ($listHeadings.length) {
-    decmSetCssImportant($listHeadings, { color: listHeadingColor, 'font-weight': '700' });
+  if ($listHeadings.length && myAjax.week_font_color) {
+    decmSetCssImportant($listHeadings, { color: myAjax.week_font_color, 'font-weight': '700' });
   }
-  decmSetCssImportant($calendarMount.find('.fc-list-heading td, .fc-list-day-cushion'), {
-    'background-color': 'rgba(208, 208, 208, 0.3)',
-    background: 'rgba(208, 208, 208, 0.3)',
-    border: '1px solid #ddd',
-    padding: '8px 14px'
-  });
-  decmSetCssImportant($calendarMount.find('.fc-day-header'), {
-    border: '1px solid rgb(221, 221, 221)',
-    padding: '9px 0'
-  });
+
+  // Calendar day cell Design (background / border / number color).
+  if (myAjax.days_background_color) {
+    decmSetCssImportant(
+      $calendarMount.find('td.fc-day.fc-past, td.fc-day.fc-future, td.fc-day.fc-day-past, td.fc-day.fc-day-future'),
+      { 'background-color': myAjax.days_background_color }
+    );
+  }
+  if (myAjax.past_days_background_color) {
+    decmSetCssImportant(
+      $calendarMount.find('td.fc-day.fc-past, td.fc-day.fc-day-past'),
+      { 'background-color': myAjax.past_days_background_color }
+    );
+  }
+  if (myAjax.current_day_background_color) {
+    decmSetCssImportant(
+      $calendarMount.find('td.fc-day.fc-today, td.fc-day.fc-day-today'),
+      { 'background-color': myAjax.current_day_background_color }
+    );
+  }
+  if (myAjax.days_font_color) {
+    decmSetCssImportant(
+      $calendarMount.find('.fc-day-number, .fc-daygrid-day-number, .fc-day-top'),
+      { color: myAjax.days_font_color }
+    );
+  }
+  if (myAjax.days_border_width || myAjax.days_border_color) {
+    var dayBorderProps = { 'border-style': 'solid' };
+    if (myAjax.days_border_width) {
+      dayBorderProps['border-width'] = myAjax.days_border_width;
+    }
+    if (myAjax.days_border_color) {
+      dayBorderProps['border-color'] = myAjax.days_border_color;
+    }
+    decmSetCssImportant($calendarMount.find('td.fc-day, .fc-week, td.fc-daygrid-day'), dayBorderProps);
+  }
 
   var eventBg = myAjax.events_background_color || '';
   var eventFg = myAjax.events_font_color || '';
