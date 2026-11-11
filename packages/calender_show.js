@@ -783,6 +783,12 @@ function decmApplyDaysOfWeekDesign($calendarMount, myAjax) {
   if (!$headers.length) {
     $headers = $calendarMount.find('th.fc-col-header-cell');
   }
+  // Keep DOW header tables separate (matches Calendar Days) so radius paints and
+  // columns stay aligned with the day grid on FE (FC v4).
+  decmSetCssImportant(
+    $calendarMount.find('.fc-head table, .fc-head .fc-row > table, table.fc-col-header'),
+    { 'border-collapse': 'separate', 'border-spacing': '0', margin: '0' }
+  );
   // Only apply Design values — never force hardcoded brand colors/borders that block Design.
   if ($headers.length) {
     if (myAjax.week_background_color) {
@@ -793,17 +799,54 @@ function decmApplyDaysOfWeekDesign($calendarMount, myAjax) {
       headerProps.color = myAjax.week_font_color;
     }
     decmSetCssImportant($headers.add($headers.find('span, a')), headerProps);
+    var weekBorderRadius = myAjax.week_border_radius || {};
+    var weekHasRadius = !!(
+      weekBorderRadius.topLeft ||
+      weekBorderRadius.topRight ||
+      weekBorderRadius.bottomRight ||
+      weekBorderRadius.bottomLeft
+    );
     var borderProps = {};
-    if (myAjax.week_border_width) {
-      borderProps['border-width'] = myAjax.week_border_width;
+    if (myAjax.week_border_width || myAjax.week_border_color) {
       borderProps['border-style'] = 'solid';
     }
     if (myAjax.week_border_color) {
       borderProps['border-color'] = myAjax.week_border_color;
-      borderProps['border-style'] = 'solid';
+    }
+    if (myAjax.week_border_width) {
+      // Match Calendar Days: right/bottom only so adjacent DOW cells don't double.
+      borderProps['border-top-width'] = myAjax.week_border_width;
+      borderProps['border-left-width'] = '0';
+      borderProps['border-right-width'] = myAjax.week_border_width;
+      borderProps['border-bottom-width'] = myAjax.week_border_width;
+    }
+    if (weekHasRadius) {
+      borderProps.overflow = 'hidden';
+      if (weekBorderRadius.topLeft) {
+        borderProps['border-top-left-radius'] = weekBorderRadius.topLeft;
+      }
+      if (weekBorderRadius.topRight) {
+        borderProps['border-top-right-radius'] = weekBorderRadius.topRight;
+      }
+      if (weekBorderRadius.bottomRight) {
+        borderProps['border-bottom-right-radius'] = weekBorderRadius.bottomRight;
+      }
+      if (weekBorderRadius.bottomLeft) {
+        borderProps['border-bottom-left-radius'] = weekBorderRadius.bottomLeft;
+      }
     }
     if (Object.keys(borderProps).length) {
+      $headers.each(function () {
+        if (this.style && typeof this.style.removeProperty === 'function') {
+          this.style.removeProperty('border-width');
+        }
+      });
       decmSetCssImportant($headers, borderProps);
+      if (myAjax.week_border_width) {
+        decmSetCssImportant($headers.filter(':first-child'), {
+          'border-left-width': myAjax.week_border_width,
+        });
+      }
     }
   }
 
@@ -837,15 +880,79 @@ function decmApplyDaysOfWeekDesign($calendarMount, myAjax) {
       { color: myAjax.days_font_color }
     );
   }
-  if (myAjax.days_border_width || myAjax.days_border_color) {
-    var dayBorderProps = { 'border-style': 'solid' };
-    if (myAjax.days_border_width) {
-      dayBorderProps['border-width'] = myAjax.days_border_width;
+  var daysBorderRadius = myAjax.days_border_radius || {};
+  var daysHasRadius = !!(
+    daysBorderRadius.topLeft ||
+    daysBorderRadius.topRight ||
+    daysBorderRadius.bottomRight ||
+    daysBorderRadius.bottomLeft
+  );
+  if (myAjax.days_border_width || myAjax.days_border_color || daysHasRadius) {
+    // Without radius: right/bottom only (no double seams). With radius: full 4-side
+    // borders + spacing so border color follows the same rounded box as the fill.
+    decmSetCssImportant($calendarMount.find('.fc-bg table'), {
+      'border-collapse': 'separate',
+      'border-spacing': daysHasRadius ? '4px' : '0',
+    });
+    var dayBorderProps = {};
+    if (myAjax.days_border_width || myAjax.days_border_color) {
+      dayBorderProps['border-style'] = 'solid';
     }
     if (myAjax.days_border_color) {
       dayBorderProps['border-color'] = myAjax.days_border_color;
     }
-    decmSetCssImportant($calendarMount.find('td.fc-day, .fc-week, td.fc-daygrid-day'), dayBorderProps);
+    if (myAjax.days_border_width) {
+      if (daysHasRadius) {
+        dayBorderProps['border-width'] = myAjax.days_border_width;
+      } else {
+        dayBorderProps['border-top-width'] = '0';
+        dayBorderProps['border-left-width'] = '0';
+        dayBorderProps['border-right-width'] = myAjax.days_border_width;
+        dayBorderProps['border-bottom-width'] = myAjax.days_border_width;
+      }
+    }
+    if (daysHasRadius) {
+      dayBorderProps.overflow = 'hidden';
+      if (daysBorderRadius.topLeft) {
+        dayBorderProps['border-top-left-radius'] = daysBorderRadius.topLeft;
+      }
+      if (daysBorderRadius.topRight) {
+        dayBorderProps['border-top-right-radius'] = daysBorderRadius.topRight;
+      }
+      if (daysBorderRadius.bottomRight) {
+        dayBorderProps['border-bottom-right-radius'] = daysBorderRadius.bottomRight;
+      }
+      if (daysBorderRadius.bottomLeft) {
+        dayBorderProps['border-bottom-left-radius'] = daysBorderRadius.bottomLeft;
+      }
+    }
+    var $dayCells = $calendarMount.find('.fc-bg td.fc-day, td.fc-daygrid-day');
+    // Clear shorthand first so Divi/cached border-width cannot re-double seams.
+    $dayCells.each(function () {
+      if (this.style && typeof this.style.removeProperty === 'function') {
+        this.style.removeProperty('border-width');
+      }
+    });
+    if (Object.keys(dayBorderProps).length) {
+      decmSetCssImportant($dayCells, dayBorderProps);
+    }
+    if (myAjax.days_border_width && !daysHasRadius) {
+      decmSetCssImportant(
+        $calendarMount.find('.fc-bg td.fc-day:first-child, td.fc-daygrid-day:first-child'),
+        { 'border-left-width': myAjax.days_border_width }
+      );
+      decmSetCssImportant(
+        $calendarMount.find(
+          '.fc-row.fc-week:first-child .fc-bg td.fc-day, .fc-daygrid-body tr:first-child td.fc-daygrid-day'
+        ),
+        { 'border-top-width': myAjax.days_border_width }
+      );
+    }
+    var weekBorderProps = { 'border-width': '0' };
+    if (myAjax.days_border_color) {
+      weekBorderProps['border-color'] = myAjax.days_border_color;
+    }
+    decmSetCssImportant($calendarMount.find('.fc-week'), weekBorderProps);
   }
 
   var eventBg = myAjax.events_background_color || '';
@@ -875,20 +982,60 @@ function decmApplyDaysOfWeekDesign($calendarMount, myAjax) {
     }
   }
 
+  // Prefer CSS variables on the mount so view switches keep Design colors without
+  // fighting FC button re-creation. Only set values Design actually provided —
+  // never hardcode brand colors (defaults live in module.json Design attrs).
+  var rootEl = $calendarMount.get(0);
+  if (rootEl && rootEl.style && typeof rootEl.style.setProperty === 'function') {
+    if (myAjax.view_background_color) {
+      rootEl.style.setProperty('--decm-view-btn-bg', myAjax.view_background_color);
+    }
+    if (myAjax.view_font_color) {
+      rootEl.style.setProperty('--decm-view-btn-fg', myAjax.view_font_color);
+    }
+    if (myAjax.current_view_background_color) {
+      rootEl.style.setProperty('--decm-current-view-btn-bg', myAjax.current_view_background_color);
+    }
+    if (myAjax.current_view_font_color) {
+      rootEl.style.setProperty('--decm-current-view-btn-fg', myAjax.current_view_font_color);
+    }
+    if (myAjax.week_background_color) {
+      rootEl.style.setProperty('--decm-dow-bg', myAjax.week_background_color);
+    }
+    if (myAjax.week_font_color) {
+      rootEl.style.setProperty('--decm-dow-fg', myAjax.week_font_color);
+    }
+    if (myAjax.week_border_color) {
+      rootEl.style.setProperty('--decm-dow-border', myAjax.week_border_color);
+    }
+    if (myAjax.nav_background_color) {
+      rootEl.style.setProperty('--decm-nav-btn-bg', myAjax.nav_background_color);
+      rootEl.style.setProperty('--decm-nav-btn-border', myAjax.nav_background_color);
+    }
+    if (myAjax.nav_font_color) {
+      rootEl.style.setProperty('--decm-nav-btn-fg', myAjax.nav_font_color);
+    }
+  }
+
   var $viewButtons = $calendarMount.find('.fc-dayGridMonth-button, .fc-timeGridWeek-button, .fc-timeGridDay-button, .fc-listWeek-button, .fc-listMonth-button, .fc-listYear-button');
   if ($viewButtons.length) {
     if (myAjax.view_background_color) {
-      $viewButtons.css('background-color', myAjax.view_background_color);
+      decmSetCssImportant($viewButtons, { 'background-color': myAjax.view_background_color });
     }
     if (myAjax.view_font_color) {
-      $viewButtons.css('color', myAjax.view_font_color);
+      decmSetCssImportant($viewButtons, { color: myAjax.view_font_color });
     }
     var $activeView = $viewButtons.filter('.fc-button-active');
-    if (myAjax.current_view_background_color) {
-      $activeView.css('background-color', myAjax.current_view_background_color);
-    }
-    if (myAjax.current_view_font_color) {
-      $activeView.css('color', myAjax.current_view_font_color);
+    if ($activeView.length && (myAjax.current_view_background_color || myAjax.current_view_font_color)) {
+      var activeStyles = {};
+      if (myAjax.current_view_background_color) {
+        activeStyles['background-color'] = myAjax.current_view_background_color;
+        activeStyles['border-color'] = myAjax.current_view_background_color;
+      }
+      if (myAjax.current_view_font_color) {
+        activeStyles.color = myAjax.current_view_font_color;
+      }
+      decmSetCssImportant($activeView, activeStyles);
     }
   }
 }
