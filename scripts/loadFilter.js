@@ -708,6 +708,12 @@ jQuery(function ($) {
 	}
 
 	$('#reportrange').on('show.daterangepicker', function () {
+		var $scope = $(this).closest('.decm_event_filter_parent, .dec-search-filter, .dec-event-filter-list');
+		if (!$scope.length) {
+			$scope = $(document);
+		}
+		$scope.find('.dec-filter-list').hide();
+		decm_syncFilterDropdownStacking();
 		decm_tagEventFilterDateRangePicker();
 	});
 
@@ -1290,12 +1296,33 @@ jQuery(function ($) {
 
 
 	// Scope toggle to the clicked bar's own list (supports multiple Filter modules on one page).
+	// Opening one filter closes other open dropdowns in the same Filter parent (accordion).
 	function decm_toggleScopedFilterList($bar, listSelector) {
 		var $list = $bar.find(listSelector).first();
 		if (!$list.length) {
-			$list = $(listSelector);
+			$list = $(listSelector).first();
 		}
-		$list.toggle();
+		if (!$list.length) {
+			return;
+		}
+
+		var willOpen = !$list.is(':visible');
+		var $scope = $bar.closest('.decm_event_filter_parent');
+		if (!$scope.length) {
+			$scope = $bar.closest('.dec-search-filter, .dec-event-filter-list');
+		}
+		if (!$scope.length) {
+			$scope = $(document);
+		}
+
+		$scope.find('.dec-filter-list').not($list).hide();
+
+		if (willOpen) {
+			$list.show();
+		} else {
+			$list.hide();
+		}
+
 		decm_syncFilterDropdownStacking();
 	}
 
